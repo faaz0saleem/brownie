@@ -34,7 +34,7 @@ $seg = $path === '' ? [] : explode('/', $path);
 
 try {
   // ---- health ----
-  if ($path==='health' || $path==='healthz') out(['ok'=>true,'driver'=>db_driver(),'time'=>date('c')]);
+  if ($path==='health' || $path==='healthz') out(['ok'=>true,'driver'=>db_driver(),'envFileFound'=>is_file(__DIR__.'/../.env'),'dbHostSet'=>(bool)env('DB_HOST'),'time'=>date('c')]);
   if ($path==='config') out(['statuses'=>['Pending','Confirmed','Baking','Out for Delivery','Delivered','Cancelled'],'currency'=>cfg()['currency']]);
 
   // ---- products ----

@@ -13,12 +13,12 @@
 <body>
 <header class="site-header"><div class="wrap nav">
   <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
-  <nav class="nav-links"><a href="/">Home</a><a href="/menu.html">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a><a href="/#contact">Contact</a></nav>
-  <a href="/cart.html" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a><a href="/#contact">Contact</a></nav>
+  <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
 </div></header>
 
 <main class="page"><div class="wrap">
-  <div class="crumbs"><a href="/">Home</a> › <a href="/menu.html">Menu</a> ›<span class="on" id="crumbName">Brownie</span></div>
+  <div class="crumbs"><a href="/">Home</a> › <a href="/menu">Menu</a> ›<span class="on" id="crumbName">Brownie</span></div>
   <div id="root"></div>
 </div></main>
 
@@ -31,7 +31,7 @@ document.getElementById('yr').textContent=new Date().getFullYear();
 var slug=new URLSearchParams(location.search).get('b');
 var p=getProduct(slug);
 var root=document.getElementById('root');
-if(!p){ root.innerHTML='<div class="empty"><div class="em">🤔</div><p>Brownie not found.</p><a href="/menu.html" class="btn btn-primary" style="margin-top:16px">See the menu</a></div>'; }
+if(!p){ root.innerHTML='<div class="empty"><div class="em">🤔</div><p>Brownie not found.</p><a href="/menu" class="btn btn-primary" style="margin-top:16px">See the menu</a></div>'; }
 else {
   document.title=p.name+' · Fudgio';
   document.getElementById('crumbName').textContent=p.name;
@@ -48,10 +48,10 @@ else {
     +'<div class="stepper"><button id="qm">−</button><span id="qv">1</span><button id="qp">+</button></div>'
     +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:22px">'
     +'<button class="btn btn-primary" id="add">🛒 Add to cart · <span id="bt">'+money(p.sizes[0].price)+'</span></button>'
-    +'<a href="/cart.html" class="btn btn-ghost">View cart</a></div>'
+    +'<a href="/cart" class="btn btn-ghost">View cart</a></div>'
     +'<div class="allergen-box"><h4>🥜 Allergen information</h4><div class="allergen-list">'+p.allergens.map(function(a){return '<span>'+a+'</span>';}).join('')+'</div></div>'
     +'<div class="cod" style="margin-top:16px">💵 Cash on Delivery only — pay when it arrives</div>'
-    +'<a href="/menu.html" class="back-link">← Back to menu</a>'
+    +'<a href="/menu" class="back-link">← Back to menu</a>'
     +'</div></div>';
   function sync(){ document.getElementById('bt').textContent=money(state.price*state.qty); document.getElementById('price').textContent=money(state.price); document.getElementById('qv').textContent=state.qty; }
   var sizes=document.querySelectorAll('#sizes .choice');

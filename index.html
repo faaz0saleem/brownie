@@ -20,8 +20,8 @@
 <body>
 <header class="site-header"><div class="wrap nav">
   <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
-  <nav class="nav-links"><a href="/">Home</a><a href="/menu.html">Menu</a><a href="#why">Why Us</a><a href="#how">How it works</a><a href="#contact">Contact</a></nav>
-  <a href="/cart.html" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="#why">Why Us</a><a href="#how">How it works</a><a href="#contact">Contact</a></nav>
+  <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
 </div></header>
 
 <section class="hero"><div class="wrap hero-grid">
@@ -29,7 +29,7 @@
     <span class="eyebrow">✨ Small-batch · Baked fresh daily</span>
     <h1>Life is short.<br/><span class="grad">Eat the brownie.</span></h1>
     <p class="lead">Rich, gooey, handcrafted brownies made from our secret small-batch recipe and delivered fresh to your door. Pay easily with <strong>Cash on Delivery</strong>.</p>
-    <div class="hero-cta"><a href="/menu.html" class="btn btn-primary">🍫 Order now</a><a href="#why" class="btn btn-ghost">Why Fudgio?</a></div>
+    <div class="hero-cta"><a href="/menu" class="btn btn-primary">🍫 Order now</a><a href="#why" class="btn btn-ghost">Why Fudgio?</a></div>
     <div class="hero-badges"><div><b>3</b><span>Signature flavours</span></div><div><b>100%</b><span>Cash on Delivery</span></div><div><b>4.9★</b><span>Loved by locals</span></div></div>
   </div>
   <div class="hero-art"><div class="big">🍫</div><div class="chip tl">🔥 Baked fresh today</div><div class="chip br cod">💵 Cash on Delivery</div></div>
@@ -40,7 +40,7 @@
 <section class="section" id="menu"><div class="wrap">
   <div class="section-head"><span class="eyebrow">🍫 Our Menu</span><h2>Three flavours. Zero compromise.</h2><p>Each brownie is baked in small batches from our secret recipe. Tap a flavour to choose your box size.</p></div>
   <div class="grid" id="grid"></div>
-  <div style="text-align:center;margin-top:34px"><a href="/menu.html" class="btn btn-ghost">View full menu →</a></div>
+  <div style="text-align:center;margin-top:34px"><a href="/menu" class="btn btn-ghost">View full menu →</a></div>
 </div></section>
 
 <section class="section" id="why"><div class="wrap">
@@ -66,7 +66,7 @@
 <section class="section"><div class="wrap"><div class="cta-band">
   <h2>Craving a brownie right now?</h2>
   <p>Order in under a minute and pay cash when it arrives. Fresh, fudgy and unforgettable.</p>
-  <a href="/menu.html" class="btn btn-primary">🍫 Order now</a>
+  <a href="/menu" class="btn btn-primary">🍫 Order now</a>
 </div></div></section>
 
 <footer class="site-footer" id="contact"><div class="wrap">
@@ -80,7 +80,7 @@
 document.getElementById('yr').textContent=new Date().getFullYear();
 document.getElementById('mail').href='mailto:'+FUDGIO.email;
 document.getElementById('grid').innerHTML = PRODUCTS.map(function(p){
-  return '<a class="card" href="/product.html?b='+p.slug+'">'
+  return '<a class="card" href="/product?b='+p.slug+'">'
     +'<div class="card-art" style="background:'+p.gradient+'">'
     +(p.featured?'<span class="fav">★ Signature</span>':'')
     +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')

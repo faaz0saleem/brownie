@@ -41,3 +41,25 @@ function addToCart(product, sizeLabel, price, qty){
 }
 var _tt;
 function toast(m){ var t=document.getElementById('toast'); if(!t)return; t.textContent=m; t.classList.add('show'); clearTimeout(_tt); _tt=setTimeout(function(){t.classList.remove('show');},2000); }
+
+/* mobile hamburger + active nav (runs on every page) */
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){
+    var nav=document.querySelector('.site-header .nav'); if(!nav) return;
+    var links=nav.querySelector('.nav-links'); var cart=nav.querySelector('.cart-btn');
+    if(links && cart){
+      var b=document.createElement('button'); b.className='menu-toggle'; b.setAttribute('aria-label','Menu'); b.innerHTML='☰';
+      b.onclick=function(){ links.classList.toggle('open'); };
+      nav.insertBefore(b, cart);
+    }
+    // highlight the current page in the nav
+    var here=location.pathname.replace(/\/$/,'')||'/';
+    (links?links.querySelectorAll('a'):[]).forEach(function(a){
+      var href=a.getAttribute('href')||''; var path=href.split('#')[0].replace(/\/$/,'')||'/';
+      if((here==='/'&&href.indexOf('#')===0)) return;
+      if(path===here && !(here==='/' && href.charAt(0)==='#')) a.classList.add('active');
+    });
+    updateCount();
+  });
+})();
