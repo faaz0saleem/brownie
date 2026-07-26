@@ -1,0 +1,40 @@
+# Auto-deploy Fudgio to your Hostinger VPS on every push to `main`.
+#
+# This connects to your server over SSH, pulls the latest code, installs
+# dependencies and restarts the apps with PM2. It requires a VPS (or any host
+# with SSH + Node) — plain shared/static hosting cannot run this Node app.
+#
+# Set these repository secrets in GitHub → Settings → Secrets and variables →
+# Actions → New repository secret:
+#   HOSTINGER_HOST     your server IP or hostname (e.g. 123.45.67.89)
+#   HOSTINGER_USER     SSH username (e.g. root)
+#   HOSTINGER_SSH_KEY  the PRIVATE SSH key that can log into the server
+#   HOSTINGER_PORT     SSH port (optional, defaults to 22)
+#   APP_DIR            absolute path to the app on the server (e.g. /home/fudgio/app)
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          port: ${{ secrets.HOSTINGER_PORT || 22 }}
+          script: |
+            set -e
+            cd "${{ secrets.APP_DIR }}"
+            git fetch origin main
+            git reset --hard origin/main
+            npm install --omit=dev
+            pm2 startOrReload ecosystem.config.cjs --update-env
+            pm2 save
+            echo "✅ Deployed $(git rev-parse --short HEAD)"

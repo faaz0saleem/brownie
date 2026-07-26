@@ -99,8 +99,17 @@ Shop listens on `4000`, admin on `3000` (change with `SHOP_PORT` / `ADMIN_PORT`)
 ## 6. Google Sign-In (OAuth)
 
 1. Google Cloud → **APIs & Services → Credentials → Create OAuth client ID → Web application**.
-2. **Authorized redirect URI**: `https://fudgio.com/auth/google/callback`
-3. Copy the client ID/secret into `.env`:
+2. **Authorised JavaScript origins:**
+   ```
+   https://fudgio.com
+   https://www.fudgio.com
+   ```
+3. **Authorised redirect URIs:**
+   ```
+   https://fudgio.com/auth/google/callback
+   https://www.fudgio.com/auth/google/callback
+   ```
+4. Copy the client ID/secret into `.env` (`GOOGLE_REDIRECT_URI` must exactly match a URI above):
    ```
    GOOGLE_CLIENT_ID=...
    GOOGLE_CLIENT_SECRET=...
@@ -148,15 +157,56 @@ sudo certbot --nginx -d fudgio.com -d www.fudgio.com -d admin.fudgio.com
 
 Certbot rewrites the Nginx config to serve HTTPS and auto-renews.
 
-## 10. Auto-deploy on push (optional)
+## 10. Auto-deploy on push (CI/CD)
 
-On the VPS, a simple deploy hook:
-```bash
-cd /path/to/fudgio && git pull && npm install --omit=dev && pm2 restart fudgio-shop fudgio-admin
-```
-Wire this to a GitHub Action or a webhook. (Hostinger’s Git auto-deploy can run this on push.)
+A ready-to-use GitHub Actions workflow is included at **`.github/workflows/deploy.yml`**.
+On every push to `main` it SSHes into your server, pulls the latest code, installs deps and
+reloads PM2. To enable it, add these **repository secrets** in
+GitHub → *Settings → Secrets and variables → Actions*:
+
+| Secret | Value |
+|--------|-------|
+| `HOSTINGER_HOST` | your VPS IP / hostname |
+| `HOSTINGER_USER` | SSH user (e.g. `root`) |
+| `HOSTINGER_SSH_KEY` | the **private** SSH key that can log in |
+| `HOSTINGER_PORT` | SSH port (optional, default 22) |
+| `APP_DIR` | absolute path to the app on the server |
+
+> **Note on Hostinger’s built-in Git integration:** on **shared/web hosting** it only *pulls files*
+> — it does **not** run Node, so the app won’t start there. Use a **VPS** (the workflow above) or
+> Hostinger’s **Node.js app** feature (set the app’s start command to run `pm2 start ecosystem.config.cjs`,
+> or two apps with `npm run shop` and `npm run admin`).
 
 ---
+
+## Troubleshooting — “the website / admin isn’t working”
+
+Work through these in order:
+
+1. **Is Node actually running the app?** On the server: `pm2 status` (should show `fudgio-shop` and
+   `fudgio-admin` **online**). If they’re not there: `pm2 start ecosystem.config.cjs && pm2 save`.
+   If PM2/Node isn’t installed, you’re on shared hosting → see section 0.
+2. **Check the logs** — this is where the real error is: `pm2 logs --lines 50`.
+   A clear `❌ Fudgio … failed to start` block means a **database** problem (next step).
+3. **Health check** — hit `https://fudgio.com/healthz` and `https://admin.fudgio.com/healthz`.
+   - `{"ok":true,...}` → the app is fine; any 404/502 is an Nginx/DNS/SSL issue (sections 7–9).
+   - `{"ok":false,"error":...}` or the app crash-looping → **database** connection problem:
+     - Add the **server’s public IP** to Cloud SQL → *Connections → Authorized networks*.
+     - Set **`DB_SSL=true`** in `.env` (Cloud SQL public IP requires SSL).
+     - Verify `DB_HOST` is the Cloud SQL **public IP**, and `DB_USER` / `DB_PASSWORD` / `DB_NAME` are correct.
+     - Make sure the **database `fudgio` exists** (Cloud SQL → Databases → Create database).
+     - After fixing `.env`: `pm2 restart fudgio-shop fudgio-admin --update-env`.
+4. **Ports/Nginx** — shop listens on `4000`, admin on `3000`. Nginx must proxy
+   `fudgio.com → 4000` and `admin.fudgio.com → 3000` (section 8), then `sudo systemctl reload nginx`.
+5. **DNS/SSL** — `fudgio.com` and `admin.fudgio.com` must both point to the server (section 7) and
+   have certificates (section 9). A browser “not secure” / connection-refused usually means these.
+
+Quick self-test locally (no DB needed — uses the JSON fallback):
+```bash
+npm start
+curl localhost:4000/healthz   # {"ok":true,...}
+curl localhost:3000/healthz   # {"ok":true,...}
+```
 
 # ✅ Go-Live Checklist — what’s stopping you from selling *today*
 

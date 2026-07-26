@@ -31,6 +31,16 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Health check (public — no token needed) so you can verify the admin is up.
+app.get('/healthz', async (req, res) => {
+  try {
+    await listOrders();
+    res.json({ ok: true, app: 'admin', driver: store.driver, time: new Date().toISOString() });
+  } catch (e) {
+    res.status(503).json({ ok: false, app: 'admin', driver: store.driver, error: e.message });
+  }
+});
+
 app.get('/api/config', (req, res) => res.json({ statuses: ORDER_STATUSES, currency: config.brand.currency }));
 app.get('/api/analytics', async (req, res) => res.json(await analytics()));
 app.get('/api/orders', async (req, res) => res.json(await listOrders()));
@@ -77,11 +87,18 @@ app.delete('/api/products/:id/image', async (req, res) => {
 });
 
 export async function startAdmin() {
-  await initStore();
-  await seed();
+  try {
+    await initStore();
+    await seed();
+  } catch (e) {
+    console.error('\n❌ Fudgio ADMIN failed to start — data store error:');
+    console.error('   ' + e.message);
+    console.error('   Driver: ' + store.driver + ' | DB host: ' + (config.db.host || '(none — using JSON fallback)'));
+    console.error('   See DEPLOY.md → Troubleshooting for Cloud SQL connection fixes.\n');
+    process.exit(1);
+  }
   app.listen(config.ports.admin, () => {
-    console.log(`📊 Fudgio admin running at http://localhost:${config.ports.admin}  (driver: ${store.driver})`);
-    console.log(`   Admin password: ${ADMIN_TOKEN}`);
+    console.log(`📊 Fudgio admin running on port ${config.ports.admin}  (driver: ${store.driver})`);
   });
 }
 
