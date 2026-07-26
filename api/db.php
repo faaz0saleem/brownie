@@ -38,7 +38,7 @@ function cfg(): array {
     'currency'        => env('CURRENCY', 'Rs'),
     'freeDeliveryOver'=> (int) env('FREE_DELIVERY_OVER', '2500'),
     'deliveryFee'     => (int) env('DELIVERY_FEE', '150'),
-    'adminToken'      => env('ADMIN_TOKEN', 'fudgio-admin'),
+    'adminToken'      => env('ADMIN_TOKEN', 'Faaz12345'),
     'brandName'       => env('BRAND_NAME', 'Fudgio'),
     'adminDomain'     => env('ADMIN_DOMAIN', 'admin.fudgio.com'),
     'siteUrl'         => env('SITE_URL', 'https://fudgio.com'),
