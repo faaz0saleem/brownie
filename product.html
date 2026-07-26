@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Fudgio — Brownie</title>
+<meta name="description" content="Order this handcrafted Fudgio brownie — choose your box size and quantity. Cash on Delivery only."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/store.css"/>
+</head>
+<body>
+<header class="site-header"><div class="wrap nav">
+  <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu.html">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a><a href="/#contact">Contact</a></nav>
+  <a href="/cart.html" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+</div></header>
+
+<main class="page"><div class="wrap">
+  <div class="crumbs"><a href="/">Home</a> › <a href="/menu.html">Menu</a> ›<span class="on" id="crumbName">Brownie</span></div>
+  <div id="root"></div>
+</div></main>
+
+<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<div class="toast" id="toast"></div>
+
+<script src="/assets/store.js"></script>
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+var slug=new URLSearchParams(location.search).get('b');
+var p=getProduct(slug);
+var root=document.getElementById('root');
+if(!p){ root.innerHTML='<div class="empty"><div class="em">🤔</div><p>Brownie not found.</p><a href="/menu.html" class="btn btn-primary" style="margin-top:16px">See the menu</a></div>'; }
+else {
+  document.title=p.name+' · Fudgio';
+  document.getElementById('crumbName').textContent=p.name;
+  var state={size:p.sizes[0].label,price:p.sizes[0].price,qty:1};
+  var nut=p.containsNuts?'<div class="nut-warning">⚠️ <div><strong>Allergy warning:</strong> This brownie contains <strong>nuts</strong>. If you have a nut allergy, please do not eat it.</div></div>':'';
+  root.innerHTML='<div class="pd"><div class="pd-art" style="background:'+p.gradient+'">'+p.emoji+'</div>'
+    +'<div class="pd-info"><h1>'+p.name+'</h1><div class="tagline">'+p.tagline+'</div><div class="desc">'+p.desc+'</div>'
+    +'<div class="pd-price" id="price">from '+money(fromPrice(p))+'</div>'
+    +'<div class="stock-note in">✅ In stock &amp; baked fresh to order</div>'
+    +nut
+    +'<div class="field-label">Choose your box size</div><div class="choices" id="sizes">'
+    +p.sizes.map(function(s,i){return '<div class="choice'+(i===0?' active':'')+'" data-p="'+s.price+'" data-l="'+s.label+'">'+s.label+'<small>'+money(s.price)+'</small></div>';}).join('')
+    +'</div><div class="field-label">Quantity</div>'
+    +'<div class="stepper"><button id="qm">−</button><span id="qv">1</span><button id="qp">+</button></div>'
+    +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:22px">'
+    +'<button class="btn btn-primary" id="add">🛒 Add to cart · <span id="bt">'+money(p.sizes[0].price)+'</span></button>'
+    +'<a href="/cart.html" class="btn btn-ghost">View cart</a></div>'
+    +'<div class="allergen-box"><h4>🥜 Allergen information</h4><div class="allergen-list">'+p.allergens.map(function(a){return '<span>'+a+'</span>';}).join('')+'</div></div>'
+    +'<div class="cod" style="margin-top:16px">💵 Cash on Delivery only — pay when it arrives</div>'
+    +'<a href="/menu.html" class="back-link">← Back to menu</a>'
+    +'</div></div>';
+  function sync(){ document.getElementById('bt').textContent=money(state.price*state.qty); document.getElementById('price').textContent=money(state.price); document.getElementById('qv').textContent=state.qty; }
+  var sizes=document.querySelectorAll('#sizes .choice');
+  Array.prototype.forEach.call(sizes,function(el){ el.onclick=function(){ Array.prototype.forEach.call(sizes,function(e){e.classList.remove('active');}); el.classList.add('active'); state.size=el.getAttribute('data-l'); state.price=Number(el.getAttribute('data-p')); sync(); }; });
+  document.getElementById('qm').onclick=function(){ state.qty=Math.max(1,state.qty-1); sync(); };
+  document.getElementById('qp').onclick=function(){ state.qty=Math.min(20,state.qty+1); sync(); };
+  document.getElementById('add').onclick=function(){ addToCart(p,state.size,state.price,state.qty); };
+}
+updateCount();
+</script>
+</body>
+</html>
