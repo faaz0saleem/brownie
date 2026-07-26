@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brownie Bliss | Cart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+
+  <header class="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a class="brand" href="index.html"><span class="logo">BB</span> Brownie Bliss</a>
+        <nav class="nav-links">
+          <a href="index.html">Home</a>
+          <a href="products.html">Products</a>
+          <a class="active" href="cart.html">Cart (<span class="cart-count">0</span>)</a>
+          <a href="checkout.html">Checkout</a>
+          <a href="admin.html">Admin</a>
+        </nav>
+        <a class="nav-cta" href="checkout.html">Proceed</a>
+        <button class="menu-btn" id="menuBtn" aria-label="Open menu">Menu</button>
+      </div>
+      <div class="mobile-links" id="mobileLinks">
+        <a href="index.html">Home</a>
+        <a href="products.html">Products</a>
+        <a href="cart.html">Cart (<span class="cart-count">0</span>)</a>
+        <a href="checkout.html">Checkout</a>
+        <a href="admin.html">Admin</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="container page-grid">
+      <article class="panel">
+        <h2>Your Cart</h2>
+        <div id="cartItems"></div>
+      </article>
+
+      <article class="panel">
+        <h3>Order Summary</h3>
+        <div id="summary"></div>
+        <div class="actions" style="margin-top: 14px;">
+          <a href="products.html" class="btn btn-secondary">Continue Shopping</a>
+          <a href="checkout.html" class="btn btn-primary">Checkout (COD)</a>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script src="assets/store.js"></script>
+  <script src="assets/site.js"></script>
+  <script>
+    const store = window.BrownieStore;
+    const cartItemsNode = document.getElementById("cartItems");
+    const summaryNode = document.getElementById("summary");
+
+    function render() {
+      const items = store.getCartWithDetails();
+      const totals = store.getCartTotals();
+
+      if (!items.length) {
+        cartItemsNode.innerHTML = "<p>Your cart is empty.</p>";
+        summaryNode.innerHTML = "<p class='small'>Add products to continue.</p>";
+        return;
+      }
+
+      cartItemsNode.innerHTML = items.map((item) => `
+        <div class="card" style="margin-bottom: 12px;">
+          <div class="row"><strong>${item.product.name}</strong><span>${store.formatPkr(item.lineTotal)}</span></div>
+          <p class="small">${item.product.shortDescription}</p>
+          <div class="row">
+            <label style="max-width: 110px;">Qty
+              <input type="number" min="1" value="${item.qty}" data-qty="${item.product.id}" />
+            </label>
+            <button class="btn btn-secondary" data-remove="${item.product.id}">Remove</button>
+          </div>
+        </div>
+      `).join("");
+
+      summaryNode.innerHTML = `
+        <p class="row"><span>Subtotal</span><strong>${store.formatPkr(totals.subtotal)}</strong></p>
+        <p class="row"><span>Delivery</span><strong>${store.formatPkr(totals.delivery)}</strong></p>
+        <hr style="border-color: rgba(255,255,255,0.14);" />
+        <p class="row"><span>Total</span><strong>${store.formatPkr(totals.total)}</strong></p>
+        <p class="small">All prices are in PKR.</p>
+      `;
+
+      cartItemsNode.querySelectorAll("input[data-qty]").forEach((input) => {
+        input.addEventListener("change", () => {
+          store.updateCartItem(input.dataset.qty, Number(input.value));
+          render();
+        });
+      });
+
+      cartItemsNode.querySelectorAll("button[data-remove]").forEach((button) => {
+        button.addEventListener("click", () => {
+          store.removeCartItem(button.dataset.remove);
+          render();
+        });
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>

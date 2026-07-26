@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brownie Bliss | Products</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+
+  <header class="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a class="brand" href="index.html"><span class="logo">BB</span> Brownie Bliss</a>
+        <nav class="nav-links">
+          <a href="index.html">Home</a>
+          <a class="active" href="products.html">Products</a>
+          <a href="cart.html">Cart (<span class="cart-count">0</span>)</a>
+          <a href="checkout.html">Checkout</a>
+          <a href="admin.html">Admin</a>
+        </nav>
+        <a class="nav-cta" href="cart.html">View Cart</a>
+        <button class="menu-btn" id="menuBtn" aria-label="Open menu">Menu</button>
+      </div>
+      <div class="mobile-links" id="mobileLinks">
+        <a href="index.html">Home</a>
+        <a href="products.html">Products</a>
+        <a href="cart.html">Cart (<span class="cart-count">0</span>)</a>
+        <a href="checkout.html">Checkout</a>
+        <a href="admin.html">Admin</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="container">
+      <div class="section-head">
+        <h2>All Products</h2>
+        <p>Pick your favorite brownies, priced in PKR.</p>
+      </div>
+      <div id="productGrid" class="grid"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container row">
+      <div class="small">Crafted fresh every day.</div>
+      <div class="small">Need a custom gift box? Contact support.</div>
+    </div>
+  </footer>
+
+  <script src="assets/store.js"></script>
+  <script src="assets/site.js"></script>
+  <script>
+    const store = window.BrownieStore;
+    const productGrid = document.getElementById("productGrid");
+
+    function createProductCard(product) {
+      const card = document.createElement("article");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="product-thumb ${product.tone || "tone-1"}"></div>
+        <h3>${product.name}</h3>
+        <p>${product.shortDescription}</p>
+        <div class="row">
+          <span class="tag">${product.badge || "Fresh"}</span>
+          <span class="price">${store.formatPkr(product.pricePkr)}</span>
+        </div>
+        <div class="actions" style="margin-top: 14px;">
+          <a class="btn btn-secondary" href="product.html?id=${product.id}">View Details</a>
+          <button class="btn btn-primary" data-add="${product.id}">Add to Cart</button>
+        </div>
+      `;
+      return card;
+    }
+
+    function renderProducts() {
+      const products = store.getProducts();
+      if (!products.length) {
+        productGrid.innerHTML = "<p>No products found. Add one from admin.</p>";
+        return;
+      }
+
+      productGrid.innerHTML = "";
+      products.forEach((product) => {
+        productGrid.appendChild(createProductCard(product));
+      });
+
+      productGrid.querySelectorAll("button[data-add]").forEach((button) => {
+        button.addEventListener("click", () => {
+          store.addToCart(button.dataset.add, 1);
+          alert("Added to cart.");
+          document.querySelectorAll(".cart-count").forEach((node) => {
+            const count = store.getCart().reduce((sum, item) => sum + item.qty, 0);
+            node.textContent = String(count);
+          });
+        });
+      });
+    }
+
+    renderProducts();
+  </script>
+</body>
+</html>
