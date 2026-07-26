@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Menu · Fudgio — Handcrafted Brownies</title>
+<meta name="description" content="Browse Fudgio's three signature handcrafted brownies — Classic Chocolate, Nutty Delight and Salted Caramel. Cash on Delivery only."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/store.css"/>
+</head>
+<body>
+<header class="site-header"><div class="wrap nav">
+  <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu.html">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a><a href="/#contact">Contact</a></nav>
+  <a href="/cart.html" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+</div></header>
+
+<main class="page"><div class="wrap">
+  <div class="crumbs"><a href="/">Home</a> ›<span class="on">Menu</span></div>
+  <div class="section-head" style="text-align:left;margin-bottom:30px">
+    <span class="eyebrow">🍫 Our Menu</span>
+    <h2 style="margin-top:6px">Three flavours. Zero compromise.</h2>
+    <p style="margin-left:0">Each brownie is baked in small batches from our secret recipe. Pick a flavour to choose your box size and quantity.</p>
+  </div>
+  <div class="grid" id="grid"></div>
+</div></main>
+
+<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<div class="toast" id="toast"></div>
+
+<script src="/assets/store.js"></script>
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+document.getElementById('grid').innerHTML = PRODUCTS.map(function(p){
+  return '<a class="card" href="/product.html?b='+p.slug+'">'
+    +'<div class="card-art" style="background:'+p.gradient+'">'
+    +(p.featured?'<span class="fav">★ Signature</span>':'')
+    +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
+    +'<span>'+p.emoji+'</span></div>'
+    +'<div class="card-body"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div>'
+    +'<div class="card-foot"><div class="price">from '+money(fromPrice(p))+'</div><span class="card-btn">Choose →</span></div></div></a>';
+}).join('');
+updateCount();
+</script>
+</body>
+</html>

@@ -1,187 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Fudgio — Handcrafted Fudgy Brownies · Cash on Delivery</title>
-<meta name="description" content="Fudgio bakes rich, gooey, handcrafted brownies fresh to order — Classic Chocolate, Nutty Delight & Salted Caramel. Cash on Delivery only. Order on WhatsApp." />
-<meta name="theme-color" content="#1a0f0a" />
-<meta property="og:type" content="website" />
-<meta property="og:title" content="Fudgio — Handcrafted Fudgy Brownies" />
-<meta property="og:description" content="Rich, gooey, handcrafted brownies delivered fresh. Cash on Delivery only." />
-<meta property="og:image" content="/public/assets/og-image.png" />
-<meta name="twitter:card" content="summary_large_image" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&display=swap" rel="stylesheet" />
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"Bakery","name":"Fudgio","description":"Handcrafted fudgy brownies, Cash on Delivery.","servesCuisine":"Desserts","paymentAccepted":"Cash on Delivery"}
-</script>
-<style>
-/* ===== Fudgio static storefront ===== */
-:root{
-  --caramel:#d98e4a;--caramel-light:#f2b978;--pink:#ff6f91;--accent:#ffb86b;
-  --cream:#f8efe5;--cream-dim:#cdb9a6;--cream-faint:#9c8877;
-  --line:rgba(255,255,255,.09);--panel:rgba(255,255,255,.045);--panel-2:rgba(255,255,255,.07);
-  --ok:#4ccf8f;--warn:#ffb454;--bad:#ff6b6b;--radius:18px;
-  --shadow:0 24px 60px -24px rgba(0,0,0,.7);
-  --font:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--display:'Fraunces',Georgia,serif;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{font-family:var(--font);color:var(--cream);line-height:1.6;-webkit-font-smoothing:antialiased;
-  background:radial-gradient(1200px 720px at 82% -12%,rgba(217,142,74,.22),transparent 60%),
-  radial-gradient(940px 620px at -12% 18%,rgba(255,111,145,.14),transparent 55%),
-  linear-gradient(165deg,#1a0f0a 0%,#2a140b 46%,#140905 100%);background-color:#160c07;min-height:100vh}
-a{color:inherit;text-decoration:none}img{max-width:100%;display:block}
-.wrap{width:min(1180px,92vw);margin:0 auto}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;font-weight:700;
-  font-size:.98rem;padding:14px 26px;border-radius:999px;border:none;transition:transform .15s,box-shadow .2s;font-family:var(--font)}
-.btn-primary{background:linear-gradient(135deg,var(--caramel),var(--pink));color:#26130b;box-shadow:0 14px 30px -12px rgba(255,111,145,.7)}
-.btn-primary:hover{transform:translateY(-2px)}
-.btn-ghost{background:var(--panel-2);color:var(--cream);border:1px solid var(--line)}
-.btn-block{width:100%}
-.btn[disabled]{opacity:.5;cursor:not-allowed;transform:none}
-/* header */
-.site-header{position:sticky;top:0;z-index:60;backdrop-filter:blur(16px);
-  background:linear-gradient(180deg,rgba(21,11,6,.9),rgba(21,11,6,.5));border-bottom:1px solid var(--line)}
-.nav{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 0}
-.brand{display:flex;align-items:center;gap:12px}
-.brand .logo{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;font-size:22px;
-  background:linear-gradient(135deg,var(--caramel),var(--pink));box-shadow:0 8px 22px -8px rgba(255,111,145,.6)}
-.brand-name{font-family:var(--display);font-size:1.45rem;font-weight:900;line-height:1}
-.brand-name small{display:block;font-family:var(--font);font-size:.58rem;letter-spacing:3px;text-transform:uppercase;color:var(--cream-dim);font-weight:700;margin-top:3px}
-.nav-links{display:flex;align-items:center;gap:26px;font-weight:600}
-.nav-links a{color:var(--cream-dim);transition:color .2s}.nav-links a:hover{color:var(--cream)}
-.cart-btn{position:relative;display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--caramel),var(--pink));
-  color:#26130b;font-weight:700;padding:10px 16px;border-radius:999px;border:none;cursor:pointer;font-size:.92rem}
-.cart-count{min-width:21px;height:21px;padding:0 6px;border-radius:999px;background:#26130b;color:var(--accent);font-size:.76rem;font-weight:800;display:grid;place-items:center}
-/* hero */
-.hero{padding:80px 0 50px}
-.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:.72rem;letter-spacing:2.5px;text-transform:uppercase;font-weight:800;
-  color:var(--accent);margin-bottom:20px;padding:7px 14px;border-radius:999px;background:rgba(255,184,107,.1);border:1px solid rgba(255,184,107,.25)}
-.hero h1{font-family:var(--display);font-weight:900;line-height:1.02;font-size:clamp(2.7rem,6vw,4.6rem);margin-bottom:22px}
-.hero h1 .grad{background:linear-gradient(120deg,var(--caramel-light),var(--pink) 55%,var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero .lead{font-size:1.14rem;color:var(--cream-dim);max-width:520px;margin-bottom:30px}
-.hero-cta{display:flex;gap:14px;flex-wrap:wrap}
-.hero-badges{display:flex;gap:30px;margin-top:36px;flex-wrap:wrap}
-.hero-badges div{display:flex;flex-direction:column}
-.hero-badges b{font-family:var(--display);font-size:1.7rem;color:var(--accent)}
-.hero-badges span{font-size:.82rem;color:var(--cream-dim)}
-.hero-art{position:relative;aspect-ratio:1/1;border-radius:30px;display:grid;place-items:center;
-  background:radial-gradient(circle at 30% 25%,rgba(255,184,107,.35),transparent 55%),linear-gradient(140deg,#52301c,#2a1409 70%);
-  box-shadow:var(--shadow),inset 0 0 80px rgba(0,0,0,.4);border:1px solid var(--line)}
-.hero-art .big{font-size:clamp(9rem,22vw,15rem);filter:drop-shadow(0 30px 40px rgba(0,0,0,.5));animation:float 6s ease-in-out infinite}
-.chip{position:absolute;background:rgba(21,11,6,.78);backdrop-filter:blur(8px);border:1px solid var(--line);padding:10px 15px;border-radius:14px;font-weight:700;font-size:.82rem;display:flex;align-items:center;gap:8px}
-.chip.tl{top:22px;left:22px}.chip.br{bottom:22px;right:22px}.chip.cod{border-color:rgba(76,207,143,.4);color:var(--ok)}
-@keyframes float{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-18px) rotate(2deg)}}
-.trust{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0;margin-top:16px}
-.trust .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
-.trust span{color:var(--cream-dim);font-weight:600;font-size:.92rem;display:flex;align-items:center;gap:8px}
-/* sections */
-.section{padding:64px 0}
-.section-head{text-align:center;margin-bottom:44px}
-.section-head .eyebrow{margin-bottom:14px}
-.section-head h2{font-family:var(--display);font-size:clamp(2rem,4vw,2.9rem)}
-.section-head p{color:var(--cream-dim);max-width:580px;margin:12px auto 0}
-/* grid */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:26px}
-.card{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);transition:transform .2s,border-color .2s;display:flex;flex-direction:column;cursor:pointer}
-.card:hover{transform:translateY(-6px);border-color:rgba(255,184,107,.35)}
-.card-art{aspect-ratio:16/11;display:grid;place-items:center;position:relative;font-size:4.8rem}
-.card-art .fav{position:absolute;top:12px;left:12px;font-size:.66rem;letter-spacing:1.2px;text-transform:uppercase;font-weight:800;padding:5px 10px;border-radius:999px;background:rgba(21,11,6,.65);color:var(--accent)}
-.card-art .nut-tag{position:absolute;bottom:12px;left:12px;font-size:.66rem;font-weight:800;padding:5px 10px;border-radius:999px;background:rgba(255,180,84,.92);color:#3a2205}
-.card-body{padding:18px;display:flex;flex-direction:column;gap:8px;flex:1}
-.card-body h3{font-family:var(--display);font-size:1.3rem}
-.card-body .tagline{color:var(--cream-dim);font-size:.9rem}
-.card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:14px}
-.price{font-family:var(--display);font-size:1.4rem;font-weight:800;color:var(--accent)}
-.card-btn{background:rgba(255,184,107,.14);color:var(--accent);border:1px solid rgba(255,184,107,.3);font-weight:700;padding:9px 16px;border-radius:999px;cursor:pointer;font-size:.86rem}
-/* features */
-.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:22px}
-.feature{background:var(--panel);border:1px solid var(--line);padding:26px;border-radius:var(--radius);text-align:center}
-.feature .ico{font-size:2.2rem;margin-bottom:12px}
-.feature h4{font-family:var(--display);font-size:1.15rem;margin-bottom:6px}
-.feature p{color:var(--cream-dim);font-size:.9rem}
-/* steps */
-.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:22px}
-.step{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:28px 24px}
-.step .n{font-family:var(--display);font-size:2.4rem;color:var(--accent);opacity:.55}
-.step h4{font-family:var(--display);font-size:1.15rem;margin:6px 0}
-.step p{color:var(--cream-dim);font-size:.9rem}
-/* modal + drawer shared */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .25s;z-index:100}
-.overlay.open{opacity:1;pointer-events:auto}
-.drawer{position:fixed;top:0;right:0;height:100%;width:min(430px,92vw);background:linear-gradient(180deg,#241109,#1a0f0a);border-left:1px solid var(--line);box-shadow:-20px 0 60px rgba(0,0,0,.5);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:101;display:flex;flex-direction:column}
-.drawer.open{transform:translateX(0)}
-.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:22px;border-bottom:1px solid var(--line)}
-.drawer-head h3{font-family:var(--display);font-size:1.4rem}
-.drawer-close{background:none;border:none;color:var(--cream-dim);font-size:1.7rem;cursor:pointer;line-height:1}
-.drawer-body{flex:1;overflow-y:auto;padding:14px 22px}
-.cart-item{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
-.ci-art{width:56px;height:56px;border-radius:12px;display:grid;place-items:center;font-size:1.7rem;flex-shrink:0}
-.ci-info{flex:1}.ci-info h5{font-size:.98rem;font-weight:700}.ci-info .ci-flavor{font-size:.78rem;color:var(--cream-dim)}
-.ci-controls{display:flex;align-items:center;gap:8px;margin-top:6px}
-.ci-controls button{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--cream);cursor:pointer}
-.ci-controls span{font-weight:700;min-width:22px;text-align:center}
-.ci-remove{background:none;border:none;color:var(--bad);font-size:.78rem;cursor:pointer;margin-left:auto}
-.ci-price{font-weight:800;color:var(--accent);white-space:nowrap}
-.cart-empty{text-align:center;color:var(--cream-dim);padding:50px 0}.cart-empty .em{font-size:3rem;margin-bottom:12px}
-.drawer-foot{padding:20px 22px;border-top:1px solid var(--line)}
-.summary-row{display:flex;justify-content:space-between;margin-bottom:8px;color:var(--cream-dim);font-size:.92rem}
-.summary-row.total{color:var(--cream);font-size:1.2rem;font-weight:800;font-family:var(--display);margin:12px 0}
-.cod-banner{background:rgba(76,207,143,.1);border:1px solid rgba(76,207,143,.3);color:var(--ok);border-radius:12px;padding:10px 14px;font-size:.84rem;font-weight:700;text-align:center;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px}
-.modal-wrap{position:fixed;inset:0;display:none;place-items:center;z-index:200;padding:20px}
-.modal-wrap.open{display:grid}
-.modal{position:relative;z-index:201;width:min(620px,100%);max-height:92vh;overflow-y:auto;background:linear-gradient(180deg,#2a140b,#1a0f0a);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:30px}
-.modal-close{position:absolute;top:16px;right:18px;background:none;border:none;color:var(--cream-dim);font-size:1.8rem;cursor:pointer;line-height:1}
-.pd{display:block}
-.pd-art{height:180px;border-radius:16px;display:grid;place-items:center;font-size:5rem;border:1px solid var(--line);margin-bottom:20px}
-.pd-info h3{font-family:var(--display);font-size:1.8rem;margin-bottom:4px}
-.pd-info .tagline{color:var(--accent);font-weight:600;margin-bottom:12px}
-.pd-info .desc{color:var(--cream-dim);font-size:.94rem;margin-bottom:16px}
-.field-label{font-size:.74rem;letter-spacing:2px;text-transform:uppercase;font-weight:800;color:var(--cream-dim);margin:14px 0 8px}
-.choices{display:flex;flex-wrap:wrap;gap:8px}
-.choice{padding:9px 14px;border-radius:11px;cursor:pointer;font-weight:600;font-size:.86rem;background:var(--panel);border:1.5px solid var(--line)}
-.choice small{display:block;font-size:.7rem;color:var(--cream-dim)}
-.choice.active{background:rgba(255,184,107,.16);border-color:var(--accent);color:var(--accent)}
-.choice.active small{color:var(--accent)}
-.qty-stepper{display:inline-flex;align-items:center;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px}
-.qty-stepper button{width:38px;height:38px;border-radius:9px;border:none;background:transparent;color:var(--cream);font-size:1.3rem;cursor:pointer}
-.qty-stepper input{width:44px;text-align:center;background:transparent;border:none;color:var(--cream);font-size:1.1rem;font-weight:700}
-.nut-warning{background:rgba(255,180,84,.12);border:1px solid rgba(255,180,84,.4);color:var(--warn);border-radius:12px;padding:12px 14px;margin:14px 0;font-weight:600;font-size:.86rem;display:flex;gap:10px}
-.allergen-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.allergen-list span{font-size:.74rem;padding:4px 9px;border-radius:999px;background:var(--panel-2);color:var(--cream-dim)}
-/* forms */
-.form-group{margin-bottom:14px}
-.form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--cream-dim);margin-bottom:6px}
-.form-group input,.form-group textarea{width:100%;padding:12px 14px;border-radius:11px;font-size:.95rem;font-family:var(--font);background:var(--panel);border:1px solid var(--line);color:var(--cream)}
-.form-group input:focus,.form-group textarea:focus{outline:none;border-color:var(--accent)}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.form-error{color:var(--bad);font-size:.86rem;margin-bottom:10px;min-height:1.1em}
-.pay-method{display:flex;align-items:center;gap:12px;background:rgba(76,207,143,.1);border:1px solid rgba(76,207,143,.3);border-radius:12px;padding:14px;margin:6px 0 18px}
-.pay-method .ico{font-size:1.6rem}.pay-method small{color:var(--cream-dim)}
-/* footer */
-.site-footer{border-top:1px solid var(--line);padding:44px 0 26px;margin-top:40px}
-.footer-grid{display:grid;grid-template-columns:1.6fr 1fr 1.2fr;gap:30px}
-.footer-brand p{color:var(--cream-dim);font-size:.9rem;margin-top:12px;max-width:260px}
-.footer-brand .cod-line{color:var(--ok)}
-.footer-col h4{font-size:.82rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--cream-faint);margin-bottom:14px}
-.footer-col a{display:block;color:var(--cream-dim);padding:5px 0;font-size:.92rem}
-.footer-col a:hover{color:var(--cream)}
-.footer-bottom{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:36px;padding-top:24px;border-top:1px solid var(--line);color:var(--cream-faint);font-size:.84rem}
-.toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,120px);background:linear-gradient(135deg,var(--caramel),var(--pink));color:#26130b;font-weight:700;padding:13px 24px;border-radius:999px;box-shadow:var(--shadow);z-index:300;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
-.toast.show{transform:translate(-50%,0)}
-@media(max-width:900px){.hero-grid,.pd,.footer-grid{grid-template-columns:1fr}.hero-art{order:-1;max-width:400px;margin:0 auto}}
-@media(max-width:720px){.nav-links{display:none}.form-row{grid-template-columns:1fr}}
-</style>
+<meta name="description" content="Fudgio bakes rich, gooey, handcrafted brownies fresh to order — Classic Chocolate, Nutty Delight & Salted Caramel. Cash on Delivery only. Order now."/>
+<meta name="theme-color" content="#1a0f0a"/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="Fudgio — Handcrafted Fudgy Brownies"/>
+<meta property="og:description" content="Rich, gooey, handcrafted brownies delivered fresh. Cash on Delivery only."/>
+<meta property="og:image" content="/public/assets/og-image.png"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/store.css"/>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Bakery","name":"Fudgio","description":"Handcrafted fudgy brownies, Cash on Delivery.","servesCuisine":"Desserts","paymentAccepted":"Cash on Delivery"}</script>
 </head>
 <body>
 <header class="site-header"><div class="wrap nav">
   <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
-  <nav class="nav-links"><a href="#menu">Menu</a><a href="#why">Why Us</a><a href="#how">How it works</a><a href="#contact">Contact</a></nav>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu.html">Menu</a><a href="#why">Why Us</a><a href="#how">How it works</a><a href="#contact">Contact</a></nav>
   <a href="/cart.html" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
 </div></header>
 
@@ -190,19 +29,18 @@ a{color:inherit;text-decoration:none}img{max-width:100%;display:block}
     <span class="eyebrow">✨ Small-batch · Baked fresh daily</span>
     <h1>Life is short.<br/><span class="grad">Eat the brownie.</span></h1>
     <p class="lead">Rich, gooey, handcrafted brownies made from our secret small-batch recipe and delivered fresh to your door. Pay easily with <strong>Cash on Delivery</strong>.</p>
-    <div class="hero-cta"><a href="#menu" class="btn btn-primary">🍫 Order now</a><a href="#why" class="btn btn-ghost">Why Fudgio?</a></div>
+    <div class="hero-cta"><a href="/menu.html" class="btn btn-primary">🍫 Order now</a><a href="#why" class="btn btn-ghost">Why Fudgio?</a></div>
     <div class="hero-badges"><div><b>3</b><span>Signature flavours</span></div><div><b>100%</b><span>Cash on Delivery</span></div><div><b>4.9★</b><span>Loved by locals</span></div></div>
   </div>
   <div class="hero-art"><div class="big">🍫</div><div class="chip tl">🔥 Baked fresh today</div><div class="chip br cod">💵 Cash on Delivery</div></div>
 </div></section>
 
-<div class="trust"><div class="wrap">
-  <span>🧈 Premium ingredients</span><span>🔥 Baked to order</span><span>🚚 Fast local delivery</span><span>💵 Cash on Delivery only</span>
-</div></div>
+<div class="trust"><div class="wrap"><span>🧈 Premium ingredients</span><span>🔥 Baked to order</span><span>🚚 Fast local delivery</span><span>💵 Cash on Delivery only</span></div></div>
 
 <section class="section" id="menu"><div class="wrap">
-  <div class="section-head"><span class="eyebrow">🍫 Our Menu</span><h2>Three flavours. Zero compromise.</h2><p>Each brownie is baked in small batches from our secret recipe. Tap a flavour to choose your box size and quantity.</p></div>
+  <div class="section-head"><span class="eyebrow">🍫 Our Menu</span><h2>Three flavours. Zero compromise.</h2><p>Each brownie is baked in small batches from our secret recipe. Tap a flavour to choose your box size.</p></div>
   <div class="grid" id="grid"></div>
+  <div style="text-align:center;margin-top:34px"><a href="/menu.html" class="btn btn-ghost">View full menu →</a></div>
 </div></section>
 
 <section class="section" id="why"><div class="wrap">
@@ -219,222 +57,38 @@ a{color:inherit;text-decoration:none}img{max-width:100%;display:block}
   <div class="section-head"><span class="eyebrow">🛍️ How it works</span><h2>From cart to doorstep</h2></div>
   <div class="steps">
     <div class="step"><div class="n">01</div><h4>Pick your brownies</h4><p>Choose a flavour, box size and quantity.</p></div>
-    <div class="step"><div class="n">02</div><h4>Send your order</h4><p>Checkout sends us your order on WhatsApp — no card needed.</p></div>
+    <div class="step"><div class="n">02</div><h4>Checkout with COD</h4><p>Enter your address — no card needed.</p></div>
     <div class="step"><div class="n">03</div><h4>We bake &amp; pack</h4><p>Fresh from the oven, boxed with care.</p></div>
     <div class="step"><div class="n">04</div><h4>Pay on delivery</h4><p>Pay cash when your box arrives. Enjoy!</p></div>
   </div>
 </div></section>
 
+<section class="section"><div class="wrap"><div class="cta-band">
+  <h2>Craving a brownie right now?</h2>
+  <p>Order in under a minute and pay cash when it arrives. Fresh, fudgy and unforgettable.</p>
+  <a href="/menu.html" class="btn btn-primary">🍫 Order now</a>
+</div></div></section>
+
 <footer class="site-footer" id="contact"><div class="wrap">
-  <div class="footer-grid">
-    <div class="footer-brand"><a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio</span></a>
-      <p>Handcrafted brownies, baked fresh. Cash on delivery.</p><p class="cod-line">💵 We accept <strong>Cash on Delivery</strong> only.</p></div>
-    <div class="footer-col"><h4>Explore</h4><a href="#menu">Our Menu</a><a href="#why">Why Us</a><a href="#how">How it works</a></div>
-    <div class="footer-col"><h4>Get in touch</h4><a id="footWa" href="#" target="_blank" rel="noopener">WhatsApp us</a><a id="footMail" href="#">Email us</a><a href="#menu">Order now</a></div>
-  </div>
-  <div class="footer-bottom"><span>© <span id="yr"></span> Fudgio. All rights reserved.</span><span>Handcrafted with 💛 &amp; a lot of chocolate.</span></div>
+  <div style="margin-bottom:8px"><strong style="color:var(--cream);font-family:var(--display);font-size:1.2rem">Fudgio</strong> · Handcrafted brownies · 💵 Cash on Delivery only</div>
+  <div>Questions? <a id="mail" href="#" style="color:var(--accent)">Email us</a> · © <span id="yr"></span> Fudgio. Made with 💛</div>
 </div></footer>
-
-<!-- Cart drawer -->
-<div class="overlay" id="drawerOverlay" onclick="closeCart()"></div>
-<aside class="drawer" id="drawer"><div class="drawer-head"><h3>Your Cart 🛒</h3><button class="drawer-close" onclick="closeCart()">×</button></div>
-  <div class="drawer-body" id="cartBody"></div><div class="drawer-foot" id="cartFoot"></div></aside>
-
-<!-- Product / checkout modal -->
-<div class="modal-wrap" id="modalWrap"><div class="overlay" onclick="closeModal()"></div><div class="modal" id="modalInner"></div></div>
-
 <div class="toast" id="toast"></div>
 
+<script src="/assets/store.js"></script>
 <script>
-/* ============================================================
-   ⚙️  SET THIS: your WhatsApp number for receiving orders.
-   Use full international format, digits only (no + or spaces).
-   Example for Pakistan: '923001234567'
-   Leave blank ('') to fall back to email orders.
-   ============================================================ */
-var FUDGIO = {
-  whatsapp: '',                       // <-- put your WhatsApp number here
-  email: 'dev@solutioninn.com',       // <-- orders emailed here if no WhatsApp
-  currency: 'Rs',
-  freeOver: 2500,
-  deliveryFee: 150
-};
-
-var PRODUCTS = [
-  { id:'chocolate', name:'Classic Chocolate', emoji:'🍫',
-    gradient:'linear-gradient(135deg,#5b3a29,#2b1a12)', featured:true, containsNuts:false,
-    tagline:'The original, impossibly fudgy',
-    desc:'Dense, gooey and deeply chocolatey with a crackly, paper-thin top. Made from our secret small-batch recipe using premium dark chocolate and real butter.',
-    sizes:[{label:'Box of 6',price:900},{label:'Box of 9',price:1290},{label:'Box of 12',price:1650}],
-    allergens:['Gluten (wheat)','Dairy','Eggs','Soy'] },
-  { id:'nutty-delight', name:'Nutty Delight', emoji:'🌰',
-    gradient:'linear-gradient(135deg,#6d4c2f,#3a2417)', featured:true, containsNuts:true,
-    tagline:'Loaded with toasted nuts',
-    desc:'A rich chocolate brownie packed with roasted walnuts and hazelnuts for a satisfying crunch in every bite. Made from our secret small-batch recipe.',
-    sizes:[{label:'Box of 6',price:1050},{label:'Box of 9',price:1490},{label:'Box of 12',price:1920}],
-    allergens:['Tree nuts (walnut, hazelnut)','Gluten (wheat)','Dairy','Eggs','Soy'] },
-  { id:'salted-caramel', name:'Salted Caramel', emoji:'🍯',
-    gradient:'linear-gradient(135deg,#a06a34,#3b230f)', featured:true, containsNuts:false,
-    tagline:'Sweet, salty, unforgettable',
-    desc:'Ribbons of golden salted caramel swirled through a fudgy chocolate brownie and finished with a pinch of flaky sea salt. Made from our secret small-batch recipe.',
-    sizes:[{label:'Box of 6',price:1050},{label:'Box of 9',price:1490},{label:'Box of 12',price:1920}],
-    allergens:['Gluten (wheat)','Dairy','Eggs','Soy'] }
-];
-
-var money = function(n){ return FUDGIO.currency + ' ' + Number(n).toLocaleString('en-US'); };
-function byId(id){ return document.getElementById(id); }
-
-/* ---- cart ---- */
-function getCart(){ try{ return JSON.parse(localStorage.getItem('fudgio_cart')||'[]'); }catch(e){ return []; } }
-function setCart(c){ localStorage.setItem('fudgio_cart', JSON.stringify(c)); updateCount(); renderCart(); }
-function cartQty(){ return getCart().reduce(function(s,i){return s+i.qty;},0); }
-function updateCount(){ byId('cartCount').textContent = cartQty(); }
-function addToCart(pid, sizeLabel, price, qty){
-  var p = PRODUCTS.filter(function(x){return x.id===pid;})[0];
-  var cart = getCart(); var key = pid+'::'+sizeLabel;
-  var ex = cart.filter(function(i){return i.key===key;})[0];
-  if(ex) ex.qty += qty;
-  else cart.push({ key:key, id:pid, name:p.name, emoji:p.emoji, gradient:p.gradient, size:sizeLabel, price:price, qty:qty });
-  setCart(cart); toast(qty+' × '+p.name+' added 🎉');
-}
-function changeQty(key, d){ var cart=getCart(); var it=cart.filter(function(i){return i.key===key;})[0]; if(!it)return; it.qty+=d; if(it.qty<=0){setCart(cart.filter(function(i){return i.key!==key;}));return;} setCart(cart); }
-function removeItem(key){ setCart(getCart().filter(function(i){return i.key!==key;})); }
-
-/* ---- render menu ---- */
-function renderMenu(){
-  byId('grid').innerHTML = PRODUCTS.map(function(p){
-    var from = Math.min.apply(null, p.sizes.map(function(s){return s.price;}));
-    return '<article class="card" onclick="openProduct(\''+p.id+'\')">'
-      + '<div class="card-art" style="background:'+p.gradient+'">'
-      + (p.featured?'<span class="fav">★ Signature</span>':'')
-      + (p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
-      + '<span>'+p.emoji+'</span></div>'
-      + '<div class="card-body"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div>'
-      + '<div class="card-foot"><div class="price">from '+money(from)+'</div><span class="card-btn">Choose →</span></div></div></article>';
-  }).join('');
-}
-
-/* ---- product modal ---- */
-function openProduct(pid){
-  var p = PRODUCTS.filter(function(x){return x.id===pid;})[0];
-  var state = { size:p.sizes[0].label, price:p.sizes[0].price, qty:1 };
-  var nut = p.containsNuts ? '<div class="nut-warning">⚠️ <div><strong>Allergy warning:</strong> This brownie contains <strong>nuts</strong>. If you have a nut allergy, please do not eat it.</div></div>' : '';
-  byId('modalInner').innerHTML =
-    '<button class="modal-close" onclick="closeModal()">×</button>'
-    + '<div class="pd"><div class="pd-art" style="background:'+p.gradient+'">'+p.emoji+'</div>'
-    + '<div class="pd-info"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div><div class="desc">'+p.desc+'</div>'
-    + nut
-    + '<div class="field-label">Box size</div><div class="choices" id="sizeChoices">'
-    + p.sizes.map(function(s,i){return '<div class="choice'+(i===0?' active':'')+'" data-price="'+s.price+'" data-label="'+s.label+'">'+s.label+'<small>'+money(s.price)+'</small></div>';}).join('')
-    + '</div><div class="field-label">Quantity</div>'
-    + '<div class="qty-stepper"><button id="qm">−</button><input id="qi" value="1" inputmode="numeric"/><button id="qp">+</button></div>'
-    + '<div style="margin-top:18px"><button class="btn btn-primary btn-block" id="addBtn">🛒 Add to cart · <span id="bt">'+money(p.sizes[0].price)+'</span></button></div>'
-    + '<div class="field-label">Allergen info</div><div class="allergen-list">'+p.allergens.map(function(a){return '<span>'+a+'</span>';}).join('')+'</div>'
-    + '</div></div>';
-  byId('modalWrap').classList.add('open');
-  var choices = byId('sizeChoices').querySelectorAll('.choice');
-  function sync(){ byId('bt').textContent = money(state.price*state.qty); }
-  Array.prototype.forEach.call(choices, function(el){ el.onclick=function(){
-    Array.prototype.forEach.call(choices,function(e){e.classList.remove('active');}); el.classList.add('active');
-    state.size=el.getAttribute('data-label'); state.price=Number(el.getAttribute('data-price')); sync();
-  };});
-  var qi=byId('qi');
-  byId('qm').onclick=function(){ state.qty=Math.max(1,state.qty-1); qi.value=state.qty; sync(); };
-  byId('qp').onclick=function(){ state.qty=Math.min(20,state.qty+1); qi.value=state.qty; sync(); };
-  qi.oninput=function(){ state.qty=Math.max(1,Math.min(20,parseInt(qi.value,10)||1)); qi.value=state.qty; sync(); };
-  byId('addBtn').onclick=function(){ addToCart(p.id, state.size, state.price, state.qty); closeModal(); };
-}
-function closeModal(){ byId('modalWrap').classList.remove('open'); }
-
-/* ---- cart drawer ---- */
-function openCart(){ renderCart(); byId('drawer').classList.add('open'); byId('drawerOverlay').classList.add('open'); }
-function closeCart(){ byId('drawer').classList.remove('open'); byId('drawerOverlay').classList.remove('open'); }
-function renderCart(){
-  var cart=getCart(), body=byId('cartBody'), foot=byId('cartFoot');
-  if(!cart.length){ body.innerHTML='<div class="cart-empty"><div class="em">🛒</div>Your cart is empty.<br/>Go grab a brownie!</div>'; foot.innerHTML=''; return; }
-  body.innerHTML = cart.map(function(i){
-    return '<div class="cart-item"><div class="ci-art" style="background:'+i.gradient+'">'+i.emoji+'</div>'
-      +'<div class="ci-info"><h5>'+i.name+'</h5><div class="ci-flavor">'+i.size+'</div>'
-      +'<div class="ci-controls"><button onclick="changeQty(\''+i.key+'\',-1)">−</button><span>'+i.qty+'</span><button onclick="changeQty(\''+i.key+'\',1)">+</button>'
-      +'<button class="ci-remove" onclick="removeItem(\''+i.key+'\')">Remove</button></div></div>'
-      +'<div class="ci-price">'+money(i.price*i.qty)+'</div></div>';
-  }).join('');
-  var subtotal = cart.reduce(function(s,i){return s+i.price*i.qty;},0);
-  var delivery = subtotal>=FUDGIO.freeOver?0:FUDGIO.deliveryFee;
-  foot.innerHTML = '<div class="cod-banner">💵 Cash on Delivery only</div>'
-    +'<div class="summary-row"><span>Subtotal</span><span>'+money(subtotal)+'</span></div>'
-    +'<div class="summary-row"><span>Delivery</span><span>'+(delivery===0?'FREE':money(delivery))+'</span></div>'
-    +'<div class="summary-row total"><span>Total</span><span>'+money(subtotal+delivery)+'</span></div>'
-    +'<button class="btn btn-primary btn-block" onclick="openCheckout()">Checkout (COD) →</button>';
-}
-
-/* ---- checkout → WhatsApp / email ---- */
-function openCheckout(){
-  var cart=getCart(); if(!cart.length){ toast('Your cart is empty 🛒'); return; }
-  var subtotal=cart.reduce(function(s,i){return s+i.price*i.qty;},0);
-  var delivery=subtotal>=FUDGIO.freeOver?0:FUDGIO.deliveryFee;
-  byId('modalInner').innerHTML =
-    '<button class="modal-close" onclick="closeModal()">×</button>'
-    +'<h3 style="font-family:var(--display);font-size:1.7rem;margin-bottom:6px">Checkout</h3>'
-    +'<div style="color:var(--cream-dim);font-size:.9rem;margin-bottom:18px">'+cartQty()+' item(s) · Total <b style="color:var(--accent)">'+money(subtotal+delivery)+'</b></div>'
-    +'<div class="pay-method"><div class="ico">💵</div><div><b>Cash on Delivery</b><br><small>Pay in cash when your brownies arrive. No online payment.</small></div></div>'
-    +'<div class="form-error" id="coErr"></div>'
-    +'<div class="form-group"><label>Full name *</label><input id="coName" placeholder="e.g. Ayesha Khan"/></div>'
-    +'<div class="form-row"><div class="form-group"><label>Phone *</label><input id="coPhone" placeholder="03xx-xxxxxxx"/></div>'
-    +'<div class="form-group"><label>City *</label><input id="coCity" placeholder="e.g. Karachi"/></div></div>'
-    +'<div class="form-group"><label>Delivery address *</label><textarea id="coAddr" rows="2" placeholder="House #, street, area"></textarea></div>'
-    +'<div class="form-group"><label>Notes (optional)</label><input id="coNotes" placeholder="Landmark, delivery time, etc."/></div>'
-    +'<button class="btn btn-primary btn-block" onclick="sendOrder()">'+(FUDGIO.whatsapp?'Send order on WhatsApp 🟢':'Send order by email ✉️')+'</button>';
-  byId('modalWrap').classList.add('open'); closeCart();
-}
-function sendOrder(){
-  var v=function(id){return (byId(id).value||'').trim();};
-  var name=v('coName'), phone=v('coPhone'), city=v('coCity'), addr=v('coAddr'), notes=v('coNotes');
-  if(!name||!phone||!city||!addr){ byId('coErr').textContent='Please fill in name, phone, city and address.'; return; }
-  var cart=getCart();
-  var subtotal=cart.reduce(function(s,i){return s+i.price*i.qty;},0);
-  var delivery=subtotal>=FUDGIO.freeOver?0:FUDGIO.deliveryFee;
-  var lines=cart.map(function(i){return '• '+i.qty+'× '+i.name+' ('+i.size+') — '+money(i.price*i.qty);}).join('\n');
-  var msg='🍫 NEW FUDGIO ORDER (Cash on Delivery)\n\n'
-    +'Name: '+name+'\nPhone: '+phone+'\nCity: '+city+'\nAddress: '+addr+'\n'
-    +(notes?'Notes: '+notes+'\n':'')
-    +'\nItems:\n'+lines
-    +'\n\nSubtotal: '+money(subtotal)+'\nDelivery: '+(delivery===0?'FREE':money(delivery))
-    +'\nTOTAL: '+money(subtotal+delivery)+' (COD)';
-  // Save the order in the database (PHP API). Works when PHP is running; if not,
-  // the WhatsApp/email message below still delivers the order.
-  var items = cart.map(function(i){ return { productId:i.id, size:i.size, qty:i.qty }; });
-  var customer = { name:name, phone:phone, city:city, address:addr, notes:notes };
-  try{
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST','/api/orders',false); xhr.setRequestHeader('Content-Type','application/json');
-    xhr.send(JSON.stringify({ items:items, customer:customer }));
-    if(xhr.status>=200 && xhr.status<300){ var o=JSON.parse(xhr.responseText).order; if(o&&o.id) msg='(Order '+o.id+')\n'+msg; }
-  }catch(e){ /* offline / no backend yet — still send below */ }
-  if(FUDGIO.whatsapp){
-    window.open('https://wa.me/'+FUDGIO.whatsapp+'?text='+encodeURIComponent(msg), '_blank');
-  } else {
-    window.location.href='mailto:'+FUDGIO.email+'?subject='+encodeURIComponent('New Fudgio order — '+name)+'&body='+encodeURIComponent(msg);
-  }
-  localStorage.removeItem('fudgio_cart'); updateCount();
-  byId('modalInner').innerHTML='<button class="modal-close" onclick="closeModal()">×</button>'
-    +'<div style="text-align:center;padding:14px 0"><div style="font-size:3.4rem">✅</div>'
-    +'<h3 style="font-family:var(--display);font-size:1.7rem;margin:10px 0">Order sent!</h3>'
-    +'<p style="color:var(--cream-dim)">Thanks, '+name+'! Your order has been sent to us'
-    +(FUDGIO.whatsapp?' on WhatsApp':' by email')+'. We\'ll confirm and deliver your brownies — pay cash on delivery. 🍫</p>'
-    +'<button class="btn btn-primary" style="margin-top:20px" onclick="closeModal()">Done</button></div>';
-}
-
-/* ---- misc ---- */
-var toastTimer;
-function toast(m){ var t=byId('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(function(){t.classList.remove('show');},2200); }
-function initContacts(){
-  byId('yr').textContent = new Date().getFullYear();
-  var wa = byId('footWa'), ml = byId('footMail');
-  if(FUDGIO.whatsapp){ wa.href='https://wa.me/'+FUDGIO.whatsapp; } else { wa.style.display='none'; }
-  ml.href='mailto:'+FUDGIO.email;
-}
-renderMenu(); updateCount(); renderCart(); initContacts();
+document.getElementById('yr').textContent=new Date().getFullYear();
+document.getElementById('mail').href='mailto:'+FUDGIO.email;
+document.getElementById('grid').innerHTML = PRODUCTS.map(function(p){
+  return '<a class="card" href="/product.html?b='+p.slug+'">'
+    +'<div class="card-art" style="background:'+p.gradient+'">'
+    +(p.featured?'<span class="fav">★ Signature</span>':'')
+    +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
+    +'<span>'+p.emoji+'</span></div>'
+    +'<div class="card-body"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div>'
+    +'<div class="card-foot"><div class="price">from '+money(fromPrice(p))+'</div><span class="card-btn">Choose →</span></div></div></a>';
+}).join('');
+updateCount();
 </script>
 </body>
 </html>

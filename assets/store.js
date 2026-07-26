@@ -1,12 +1,43 @@
-/* Fudgio shared cart logic for cart.html & checkout.html */
+/* Fudgio shared storefront logic: catalog + cart (used by every page) */
 var FUDGIO = { whatsapp:'', email:'dev@solutioninn.com', currency:'Rs', freeOver:2500, deliveryFee:150 };
+
+var PRODUCTS = [
+  { id:'chocolate', slug:'chocolate', name:'Classic Chocolate', emoji:'🍫',
+    gradient:'linear-gradient(135deg,#5b3a29,#2b1a12)', featured:true, containsNuts:false,
+    tagline:'The original, impossibly fudgy',
+    desc:'Dense, gooey and deeply chocolatey with a crackly, paper-thin top. Made from our secret small-batch recipe using premium dark chocolate and real butter. The one everyone comes back for.',
+    sizes:[{label:'Box of 6',price:900},{label:'Box of 9',price:1290},{label:'Box of 12',price:1650}],
+    allergens:['Gluten (wheat)','Dairy','Eggs','Soy'] },
+  { id:'nutty-delight', slug:'nutty-delight', name:'Nutty Delight', emoji:'🌰',
+    gradient:'linear-gradient(135deg,#6d4c2f,#3a2417)', featured:true, containsNuts:true,
+    tagline:'Loaded with toasted nuts',
+    desc:'A rich chocolate brownie packed with roasted walnuts and hazelnuts for a satisfying crunch in every bite. Made from our secret small-batch recipe. For serious nut lovers.',
+    sizes:[{label:'Box of 6',price:1050},{label:'Box of 9',price:1490},{label:'Box of 12',price:1920}],
+    allergens:['Tree nuts (walnut, hazelnut)','Gluten (wheat)','Dairy','Eggs','Soy'] },
+  { id:'salted-caramel', slug:'salted-caramel', name:'Salted Caramel', emoji:'🍯',
+    gradient:'linear-gradient(135deg,#a06a34,#3b230f)', featured:true, containsNuts:false,
+    tagline:'Sweet, salty, unforgettable',
+    desc:'Ribbons of golden salted caramel swirled through a fudgy chocolate brownie and finished with a pinch of flaky sea salt. Made from our secret small-batch recipe. The perfect balance of sweet and salty.',
+    sizes:[{label:'Box of 6',price:1050},{label:'Box of 9',price:1490},{label:'Box of 12',price:1920}],
+    allergens:['Gluten (wheat)','Dairy','Eggs','Soy'] }
+];
+function getProduct(slug){ for(var i=0;i<PRODUCTS.length;i++) if(PRODUCTS[i].slug===slug) return PRODUCTS[i]; return null; }
+function fromPrice(p){ return Math.min.apply(null, p.sizes.map(function(s){return s.price;})); }
+
 function money(n){ return FUDGIO.currency + ' ' + Number(n).toLocaleString('en-US'); }
 function getCart(){ try{ return JSON.parse(localStorage.getItem('fudgio_cart')||'[]'); }catch(e){ return []; } }
 function saveCart(c){ localStorage.setItem('fudgio_cart', JSON.stringify(c)); updateCount(); }
 function cartQty(){ return getCart().reduce(function(s,i){return s+i.qty;},0); }
-function updateCount(){ var e=document.getElementById('cartCount'); if(e) e.textContent=cartQty(); }
+function updateCount(){ var el=document.getElementById('cartCount'); if(el) el.textContent=cartQty(); }
 function cartSubtotal(){ return getCart().reduce(function(s,i){return s+i.price*i.qty;},0); }
 function cartDelivery(){ return cartSubtotal()>=FUDGIO.freeOver?0:FUDGIO.deliveryFee; }
 function cartTotal(){ return cartSubtotal()+cartDelivery(); }
+function addToCart(product, sizeLabel, price, qty){
+  var cart=getCart(), key=product.id+'::'+(sizeLabel||'');
+  var ex=cart.filter(function(i){return i.key===key;})[0];
+  if(ex) ex.qty+=qty;
+  else cart.push({key:key,id:product.id,name:product.name,emoji:product.emoji,gradient:product.gradient,size:sizeLabel||'',price:price,qty:qty});
+  saveCart(cart); toast(qty+' × '+product.name+' added 🎉');
+}
 var _tt;
-function toast(m){ var t=document.getElementById('toast'); if(!t)return; t.textContent=m; t.classList.add('show'); clearTimeout(_tt); _tt=setTimeout(function(){t.classList.remove('show');},2200); }
+function toast(m){ var t=document.getElementById('toast'); if(!t)return; t.textContent=m; t.classList.add('show'); clearTimeout(_tt); _tt=setTimeout(function(){t.classList.remove('show');},2000); }
