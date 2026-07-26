@@ -39,7 +39,7 @@ try {
 
   // ---- products ----
   if ($seg[0]==='products') {
-    if (count($seg)===1 && $method==='GET') out(products_all());
+    if (count($seg)===1 && $method==='GET') { $admin=(($_SERVER['HTTP_X_ADMIN_TOKEN']??'')===cfg()['adminToken']); out(products_all($admin)); }
     if (count($seg)===1 && $method==='POST') { require_admin(); out(product_create(body()), 201); }
     $pid = $seg[1] ?? '';
     if (count($seg)===2 && $method==='GET') { $p=product_get($pid); $p?out($p):err('Not found',404); }

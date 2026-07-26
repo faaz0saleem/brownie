@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Checkout · Fudgio</title>
+<meta name="robots" content="noindex"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/store.css"/>
+</head>
+<body>
+<header class="site-header"><div class="wrap nav">
+  <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
+  <nav class="nav-links"><a href="/#menu">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a></nav>
+  <a href="/cart.html" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+</div></header>
+
+<main class="page"><div class="wrap">
+  <div class="crumbs"><a href="/">Home</a> › <a href="/cart.html">Cart</a> ›<span class="on">Checkout</span></div>
+  <h1>Checkout</h1>
+  <div class="sub">Enter your delivery details. You'll pay cash when your brownies arrive.</div>
+  <div class="steps-bar"><div class="s"><span class="b">1</span>Cart</div><div class="sep"></div><div class="s on"><span class="b">2</span>Details</div><div class="sep"></div><div class="s"><span class="b">3</span>Done</div></div>
+  <div id="root"></div>
+</div></main>
+
+<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<div class="toast" id="toast"></div>
+
+<script src="/assets/store.js"></script>
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+function summaryHtml(){
+  var rows=getCart().map(function(i){return '<div class="srow"><span>'+i.qty+'× '+i.name+(i.size?' ('+i.size+')':'')+'</span><span>'+money(i.price*i.qty)+'</span></div>';}).join('');
+  return '<div class="panel summary"><h3>Order summary</h3>'+rows
+    +'<div class="srow" style="border-top:1px solid var(--line);padding-top:10px"><span>Subtotal</span><span>'+money(cartSubtotal())+'</span></div>'
+    +'<div class="srow"><span>Delivery</span><span>'+(cartDelivery()===0?'FREE':money(cartDelivery()))+'</span></div>'
+    +'<div class="srow tot"><span>Total</span><span>'+money(cartTotal())+'</span></div>'
+    +'<div class="cod">💵 Cash on Delivery only</div></div>';
+}
+function render(){
+  var root=document.getElementById('root');
+  if(!getCart().length){ root.innerHTML='<div class="empty"><div class="em">🛒</div><p>Your cart is empty.</p><a href="/#menu" class="btn btn-primary" style="margin-top:18px">Browse the menu</a></div>'; updateCount(); return; }
+  root.innerHTML='<div class="split"><div class="panel"><h3>Delivery details</h3>'
+    +'<div class="pay"><div class="ico">💵</div><div><b>Cash on Delivery</b><br><small>Pay in cash when your brownies arrive. No online payment.</small></div></div>'
+    +'<div class="err" id="err"></div>'
+    +'<div class="fg"><label>Full name *</label><input id="fName" placeholder="e.g. Ayesha Khan"/></div>'
+    +'<div class="frow"><div class="fg"><label>Phone *</label><input id="fPhone" placeholder="03xx-xxxxxxx"/></div><div class="fg"><label>City *</label><input id="fCity" placeholder="e.g. Karachi"/></div></div>'
+    +'<div class="fg"><label>Delivery address *</label><textarea id="fAddr" rows="2" placeholder="House #, street, area"></textarea></div>'
+    +'<div class="fg"><label>Notes (optional)</label><input id="fNotes" placeholder="Landmark, delivery time, etc."/></div>'
+    +'<button class="btn btn-primary btn-block" id="place" onclick="place()">Place order (COD) 🍫</button></div>'
+    +summaryHtml()+'</div>';
+  updateCount();
+}
+function place(){
+  var v=function(id){return (document.getElementById(id).value||'').trim();};
+  var name=v('fName'),phone=v('fPhone'),city=v('fCity'),addr=v('fAddr'),notes=v('fNotes');
+  if(!name||!phone||!city||!addr){ document.getElementById('err').textContent='Please fill in name, phone, city and address.'; return; }
+  var btn=document.getElementById('place'); btn.disabled=true; btn.textContent='Placing order…';
+  var cart=getCart();
+  var items=cart.map(function(i){return {productId:i.id,size:i.size,qty:i.qty};});
+  var customer={name:name,phone:phone,city:city,address:addr,notes:notes};
+  var lines=cart.map(function(i){return '• '+i.qty+'× '+i.name+(i.size?' ('+i.size+')':'')+' — '+money(i.price*i.qty);}).join('\n');
+  var msg='🍫 NEW FUDGIO ORDER (Cash on Delivery)\n\nName: '+name+'\nPhone: '+phone+'\nCity: '+city+'\nAddress: '+addr+'\n'+(notes?'Notes: '+notes+'\n':'')+'\nItems:\n'+lines+'\n\nSubtotal: '+money(cartSubtotal())+'\nDelivery: '+(cartDelivery()===0?'FREE':money(cartDelivery()))+'\nTOTAL: '+money(cartTotal())+' (COD)';
+  var orderId='';
+  try{ var x=new XMLHttpRequest(); x.open('POST','/api/orders',false); x.setRequestHeader('Content-Type','application/json'); x.send(JSON.stringify({items:items,customer:customer}));
+    if(x.status>=200&&x.status<300){ var o=JSON.parse(x.responseText).order; if(o&&o.id){orderId=o.id; msg='(Order '+o.id+')\n'+msg;} } }catch(e){}
+  if(FUDGIO.whatsapp) window.open('https://wa.me/'+FUDGIO.whatsapp+'?text='+encodeURIComponent(msg),'_blank');
+  else window.location.href='mailto:'+FUDGIO.email+'?subject='+encodeURIComponent('New Fudgio order — '+name)+'&body='+encodeURIComponent(msg);
+  localStorage.removeItem('fudgio_cart'); updateCount();
+  document.getElementById('root').innerHTML='<div class="empty"><div class="em">✅</div><h1 style="font-family:var(--display)">Order placed!</h1>'
+    +(orderId?'<p style="color:var(--accent);font-weight:800;font-size:1.1rem;margin:8px 0">'+orderId+'</p>':'')
+    +'<p>Thanks, '+name+'! Your order has been sent to us'+(FUDGIO.whatsapp?' on WhatsApp':' by email')+'. We\'ll confirm and deliver — pay cash on delivery. 🍫</p>'
+    +'<a href="/#menu" class="btn btn-primary" style="margin-top:20px">Order more</a></div>';
+  window.scrollTo(0,0);
+}
+render();
+</script>
+</body>
+</html>

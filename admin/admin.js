@@ -4,9 +4,13 @@ const RS = (n) => CUR + ' ' + Number(n).toLocaleString('en-US');
 let TOKEN = localStorage.getItem('fud_admin_token') || '';
 let STATUSES = ['Pending', 'Confirmed', 'Baking', 'Out for Delivery', 'Delivered', 'Cancelled'];
 
+// If we're on the admin subdomain, call the main domain's API (same PHP backend).
+var API_BASE = (location.hostname.indexOf('admin.') === 0)
+  ? location.protocol + '//' + location.hostname.replace(/^admin\./, '') + '/api'
+  : '/api';
 async function api(path, opts = {}) {
-  const res = await fetch('/api' + path, {
-    ...opts,
+  const res = await fetch(API_BASE + path, {
+    ...opts, credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'x-admin-token': TOKEN, ...(opts.headers || {}) }
   });
   if (res.status === 401) { logout(); throw new Error('unauthorized'); }
@@ -26,7 +30,7 @@ async function login() {
   const token = document.getElementById('loginToken').value.trim();
   err.textContent = '';
   try {
-    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+    const res = await fetch(API_BASE + '/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
     if (!res.ok) { err.textContent = 'Wrong password. Try again.'; return; }
     TOKEN = token; localStorage.setItem('fud_admin_token', token); showApp();
   } catch (e) { err.textContent = 'Network error.'; }
@@ -251,6 +255,6 @@ async function loadCustomers() {
 document.getElementById('loginBtn').addEventListener('click', login);
 document.getElementById('loginToken').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
 if (TOKEN) {
-  fetch('/api/analytics', { headers: { 'x-admin-token': TOKEN } })
+  fetch(API_BASE + '/analytics', { credentials: 'include', headers: { 'x-admin-token': TOKEN } })
     .then((r) => { if (r.ok) showApp(); else logout(); }).catch(() => logout());
 }
