@@ -85,6 +85,16 @@ staticPage('/account', { title: 'Your account', content: pages.accountPage(),
 staticPage('/privacy', { title: 'Privacy Policy', content: pages.legalPage('privacy') });
 staticPage('/terms', { title: 'Terms of Service', content: pages.legalPage('terms') });
 
+// ---------------- Health check ----------------
+app.get('/healthz', async (req, res) => {
+  try {
+    await listProducts(); // touches the DB
+    res.json({ ok: true, app: 'shop', driver: store.driver, time: new Date().toISOString() });
+  } catch (e) {
+    res.status(503).json({ ok: false, app: 'shop', driver: store.driver, error: e.message });
+  }
+});
+
 // ---------------- Customer API ----------------
 app.get('/api/products', async (req, res) => res.json(await listProducts()));
 app.get('/api/products/:slug', async (req, res) => {
@@ -194,10 +204,22 @@ app.use((req, res) => notFound(res));
 
 // ---------------- boot ----------------
 export async function startShop() {
-  await initStore();
-  await seed();
+  try {
+    await initStore();
+    await seed();
+  } catch (e) {
+    console.error('\n❌ Fudgio SHOP failed to start — data store error:');
+    console.error('   ' + e.message);
+    console.error('   Driver: ' + store.driver + ' | DB host: ' + (config.db.host || '(none — using JSON fallback)'));
+    console.error('   Common fixes when using MySQL/Cloud SQL:');
+    console.error('     • Add this server\'s public IP to Cloud SQL → Connections → Authorized networks');
+    console.error('     • Set DB_SSL=true in .env (Cloud SQL public IP requires SSL)');
+    console.error('     • Double-check DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME');
+    console.error('     • Make sure the database named in DB_NAME actually exists\n');
+    process.exit(1);
+  }
   app.listen(config.ports.shop, () => {
-    console.log(`🍫 Fudgio shop running at http://localhost:${config.ports.shop}  (driver: ${store.driver})`);
+    console.log(`🍫 Fudgio shop running on port ${config.ports.shop}  (driver: ${store.driver})`);
   });
 }
 
