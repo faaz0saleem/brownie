@@ -2,6 +2,7 @@
 // it only calls the unified store API, so it works on MySQL or the JSON store.
 import { store } from './data/index.js';
 import { config } from './config.js';
+import { orderPlaced } from './notify.js';
 
 const ORDER_STATUSES = ['Pending', 'Confirmed', 'Baking', 'Out for Delivery', 'Delivered', 'Cancelled'];
 export { ORDER_STATUSES };
@@ -86,6 +87,10 @@ export async function createOrder({ items, customer, userId }) {
     lastOrderAt: now
   });
   if (!order.userId) { order.userId = user.id; await store.saveOrder(order); }
+
+  // Notify the shop owner (email / webhook). Fire-and-forget — never blocks
+  // or fails the customer's order.
+  orderPlaced(order).catch(() => {});
 
   return { order };
 }

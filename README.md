@@ -52,6 +52,14 @@ Fudgio talks to storage through one interface with two interchangeable drivers:
 
 No credentials are ever hardcoded — everything comes from environment variables. See `.env.example`.
 
+## 🔔 Order notifications
+
+Every new order can alert you instantly:
+- **Email** — set `SMTP_*` and `ORDER_NOTIFY_TO` in `.env` (works with Gmail app passwords, Zoho, Mailgun, SendGrid…).
+- **Webhook** — set `ORDER_WEBHOOK_URL` to POST each order as JSON (point it at a WhatsApp Cloud API relay, Zapier/Make, n8n, Slack or Discord).
+
+If neither is set, orders still always appear in the admin dashboard; the app just logs a reminder. Notifications never block or break order placement.
+
 ## 🌐 Going live
 
 Full production setup — Hostinger/VPS, Nginx for the two subdomains, PM2, Cloud SQL,

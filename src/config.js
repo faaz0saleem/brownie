@@ -61,6 +61,22 @@ export const config = {
     // Cloud SQL public IP should use SSL. Set DB_SSL=true to enable.
     ssl: env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined
   },
+  notify: {
+    // Email order alerts (any SMTP: Gmail app password, Zoho, Mailgun, etc.)
+    smtp: {
+      enabled: !!(env.SMTP_HOST && env.SMTP_USER),
+      host: env.SMTP_HOST,
+      port: parseInt(env.SMTP_PORT || '587', 10),
+      secure: env.SMTP_SECURE === 'true' || env.SMTP_PORT === '465',
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS
+    },
+    from: env.SMTP_FROM || env.CONTACT_EMAIL || 'orders@fudgio.com',
+    to: env.ORDER_NOTIFY_TO || env.CONTACT_EMAIL || 'hello@fudgio.com',
+    // Optional generic webhook (POST order JSON) — point at a WhatsApp Cloud API
+    // relay, Zapier/Make, n8n, Slack, Discord, etc.
+    webhookUrl: env.ORDER_WEBHOOK_URL || ''
+  },
   auth: {
     // Secret used to sign session cookies. MUST be set in production.
     cookieSecret: env.COOKIE_SECRET || 'dev-insecure-secret-change-me',

@@ -173,9 +173,9 @@ The app is **functionally complete**. These are the real-world steps before publ
 - [ ] **Define your delivery area** and update the FAQ/checkout copy accordingly.
 
 ### Should-do before marketing
-- [ ] **Order notifications** — right now orders appear in the admin dashboard. Add email/WhatsApp/SMS
-      alerts so you’re notified instantly (Nodemailer for email, or a WhatsApp/Twilio integration).
-      *This is the single most valuable next feature for a live store.*
+- [x] **Order notifications** — built in. Every new order emails you (set `SMTP_*` and `ORDER_NOTIFY_TO`)
+      and/or POSTs to a webhook (`ORDER_WEBHOOK_URL`) you can point at WhatsApp Cloud API / Zapier /
+      Slack. Just add your SMTP or webhook details to `.env`. Orders also always appear in the admin.
 - [ ] **Test a full real order** end-to-end (place → see in admin → advance status → customer tracks it).
 - [ ] **Backups** — schedule Cloud SQL automated backups.
 - [ ] **Google Business + Analytics** — verify the site in Google Search Console, add analytics, submit `sitemap.xml`.
