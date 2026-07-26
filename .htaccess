@@ -1,6 +1,18 @@
 # Fudgio — Apache/LiteSpeed config for Hostinger shared hosting.
 RewriteEngine On
 
+# --- STOP any redirect of fudgio.com -> admin.fudgio.com ---
+# Serve the storefront directly at the root; never redirect the main domain.
+RewriteCond %{HTTP_HOST}   ^(www\.)?fudgio\.com$   [NC]
+RewriteCond %{REQUEST_URI} ^/?$
+RewriteRule ^$ index.html [L]
+# Don't let browsers cache a stale 301 redirect for the homepage.
+<IfModule mod_headers.c>
+  <FilesMatch "index\.html$">
+    Header always set Cache-Control "no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
 # --- Route all /api/* requests to the PHP front controller ---
 RewriteRule ^api/?$      api/index.php  [L]
 RewriteCond %{REQUEST_URI} !^/api/index\.php
