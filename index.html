@@ -401,6 +401,16 @@ function sendOrder(){
     +'\nItems:\n'+lines
     +'\n\nSubtotal: '+money(subtotal)+'\nDelivery: '+(delivery===0?'FREE':money(delivery))
     +'\nTOTAL: '+money(subtotal+delivery)+' (COD)';
+  // Save the order in the database (PHP API). Works when PHP is running; if not,
+  // the WhatsApp/email message below still delivers the order.
+  var items = cart.map(function(i){ return { productId:i.id, size:i.size, qty:i.qty }; });
+  var customer = { name:name, phone:phone, city:city, address:addr, notes:notes };
+  try{
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST','/api/orders',false); xhr.setRequestHeader('Content-Type','application/json');
+    xhr.send(JSON.stringify({ items:items, customer:customer }));
+    if(xhr.status>=200 && xhr.status<300){ var o=JSON.parse(xhr.responseText).order; if(o&&o.id) msg='(Order '+o.id+')\n'+msg; }
+  }catch(e){ /* offline / no backend yet — still send below */ }
   if(FUDGIO.whatsapp){
     window.open('https://wa.me/'+FUDGIO.whatsapp+'?text='+encodeURIComponent(msg), '_blank');
   } else {
