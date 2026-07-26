@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Fudgio — Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/admin.css" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+</head>
+<body>
+  <!-- LOGIN -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <div class="logo">🍫</div>
+      <h1>Fudgio Admin</h1>
+      <p>Sign in to manage orders, stock, images &amp; analytics</p>
+      <div class="login-err" id="loginErr"></div>
+      <input type="password" id="loginToken" placeholder="Admin password" autocomplete="current-password" />
+      <button id="loginBtn">Sign in →</button>
+      <div class="login-hint">This dashboard is private and not linked from the store.</div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div class="app" id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo">🍫</span>
+        <span>Fudgio<small>Admin Panel</small></span>
+      </div>
+      <nav class="nav-menu">
+        <button class="nav-item active" data-view="dashboard"><span class="ico">📊</span> Dashboard</button>
+        <button class="nav-item" data-view="orders"><span class="ico">🧾</span> Orders</button>
+        <button class="nav-item" data-view="inventory"><span class="ico">📦</span> Products &amp; Stock</button>
+        <button class="nav-item" data-view="customers"><span class="ico">👥</span> Customers</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="nav-item logout" onclick="logout()"><span class="ico">🚪</span> Log out</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h2 id="viewTitle">Dashboard</h2>
+          <div class="sub" id="viewSub">Store overview &amp; analytics</div>
+        </div>
+        <button class="refresh-btn" onclick="refreshAll()">↻ Refresh</button>
+      </div>
+
+      <!-- DASHBOARD -->
+      <section class="view active" id="view-dashboard">
+        <div id="lowStockAlert"></div>
+        <div class="kpi-grid" id="kpiGrid"></div>
+        <div class="two-col">
+          <div class="panel">
+            <h3>📈 Sales — last 14 days</h3>
+            <div class="panel-sub">Revenue &amp; orders per day (COD)</div>
+            <div class="chart" id="salesChart"></div>
+          </div>
+          <div class="panel">
+            <h3>🏆 Best sellers</h3>
+            <div class="panel-sub">Units sold by product</div>
+            <div class="rank-list" id="topProducts"></div>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="panel">
+            <h3>📍 Orders by city</h3>
+            <div class="panel-sub">Where your brownies are going</div>
+            <div class="rank-list" id="cityBreakdown"></div>
+          </div>
+          <div class="panel">
+            <h3>🧾 Order status</h3>
+            <div class="panel-sub">Current pipeline</div>
+            <div class="rank-list" id="statusBreakdown"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ORDERS -->
+      <section class="view" id="view-orders">
+        <div class="panel">
+          <h3>🧾 All orders</h3>
+          <div class="panel-sub">Every order placed on the store lands here. Update status as it moves through delivery — cancelling restocks items.</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Order</th><th>Customer</th><th>Location</th><th>Items</th><th>Total</th><th>Payment</th><th>Placed</th><th>Status</th></tr>
+              </thead>
+              <tbody id="ordersBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- INVENTORY -->
+      <section class="view" id="view-inventory">
+        <div class="panel">
+          <h3>📦 Products, stock &amp; images</h3>
+          <div class="panel-sub">Upload brownie photos, adjust price &amp; stock, mark items out of stock, and see units sold per product.</div>
+          <div class="inv-grid" id="invGrid"></div>
+        </div>
+      </section>
+
+      <!-- CUSTOMERS -->
+      <section class="view" id="view-customers">
+        <div class="panel">
+          <h3>👥 Customers</h3>
+          <div class="panel-sub">Everyone who ordered or created an account, with their location and lifetime value.</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Contact</th><th>City</th><th>Address</th><th>Orders</th><th>Total spent</th><th>Last order</th></tr>
+              </thead>
+              <tbody id="customersBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/admin.js"></script>
+</body>
+</html>
