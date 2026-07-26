@@ -13,8 +13,8 @@
 <body>
 <header class="site-header"><div class="wrap nav">
   <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
-  <nav class="nav-links"><a href="/">Home</a><a href="/menu.html">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a><a href="/#contact">Contact</a></nav>
-  <a href="/cart.html" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a><a href="/#contact">Contact</a></nav>
+  <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
 </div></header>
 
 <main class="page"><div class="wrap">
@@ -34,7 +34,7 @@
 <script>
 document.getElementById('yr').textContent=new Date().getFullYear();
 document.getElementById('grid').innerHTML = PRODUCTS.map(function(p){
-  return '<a class="card" href="/product.html?b='+p.slug+'">'
+  return '<a class="card" href="/product?b='+p.slug+'">'
     +'<div class="card-art" style="background:'+p.gradient+'">'
     +(p.featured?'<span class="fav">★ Signature</span>':'')
     +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')

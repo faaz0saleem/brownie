@@ -13,8 +13,8 @@
 <body>
 <header class="site-header"><div class="wrap nav">
   <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
-  <nav class="nav-links"><a href="/#menu">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a></nav>
-  <a href="/cart.html" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a><a href="/#contact">Contact</a></nav>
+  <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
 </div></header>
 
 <main class="page"><div class="wrap">
@@ -44,7 +44,7 @@ function render(){
     +'<div class="srow"><span>Delivery</span><span>'+(cartDelivery()===0?'FREE':money(cartDelivery()))+'</span></div>'
     +'<div class="srow tot"><span>Total</span><span>'+money(cartTotal())+'</span></div>'
     +'<div class="cod">💵 Cash on Delivery only</div>'
-    +'<a href="/checkout.html" class="btn btn-primary btn-block">Proceed to checkout →</a>'
+    +'<a href="/checkout" class="btn btn-primary btn-block">Proceed to checkout →</a>'
     +'<a href="/#menu" class="btn btn-ghost btn-block" style="margin-top:10px">Add more brownies</a></div></div>';
   updateCount();
 }
