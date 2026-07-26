@@ -1,0 +1,18 @@
+{
+  "name": "brownie-bliss",
+  "version": "1.0.0",
+  "description": "Brownie Bliss — a beautiful COD-only brownie e-commerce store with an admin dashboard",
+  "type": "module",
+  "scripts": {
+    "start": "node src/start.js",
+    "shop": "node src/server-shop.js",
+    "admin": "node src/server-admin.js",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

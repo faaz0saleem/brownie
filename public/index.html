@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brownie Bliss — Handcrafted Fudgy Brownies, Cash on Delivery</title>
+  <meta name="description" content="Small-batch, handcrafted brownies delivered fresh to your door. Cash on Delivery only." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a href="/" class="brand">
+        <span class="logo">🍫</span>
+        <span>Brownie Bliss<small>Fresh · Fudgy · COD</small></span>
+      </a>
+      <nav class="nav-links">
+        <a href="#menu">Menu</a>
+        <a href="#why">Why Us</a>
+        <a href="#story">Our Story</a>
+      </nav>
+      <button class="cart-btn" onclick="openCart()">
+        🛒 Cart <span class="cart-count" id="cartCount">0</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">✨ Small-batch · Baked fresh daily</span>
+        <h1>Life is short.<br /><span class="grad">Eat the brownie.</span></h1>
+        <p class="lead">Rich, gooey, handcrafted brownies made with premium Belgian chocolate and delivered warm to your door. Pay comfortably with <b>Cash on Delivery</b>.</p>
+        <div class="hero-cta">
+          <a href="#menu" class="btn btn-primary">🍫 Explore the Menu</a>
+          <a href="#why" class="btn btn-ghost">Why Brownie Bliss?</a>
+        </div>
+        <div class="hero-badges">
+          <div><b>8+</b><span>Signature flavours</span></div>
+          <div><b>100%</b><span>Cash on Delivery</span></div>
+          <div><b>4.9★</b><span>Loved by locals</span></div>
+        </div>
+      </div>
+      <div class="hero-art">
+        <div class="big-brownie">🍫</div>
+        <div class="float-chip">🔥 Baked fresh today</div>
+        <div class="cod-chip">💵 Cash on Delivery only</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MENU -->
+  <section class="section" id="menu">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">🍫 Our Menu</span>
+        <h2>Pick your perfect brownie</h2>
+        <p>Every square is baked in small batches. Choose your flavour and quantity on each product page.</p>
+      </div>
+      <div class="grid" id="productGrid">
+        <div class="cart-empty"><div class="em">⏳</div>Loading fresh brownies…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHY -->
+  <section class="section" id="why">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">💛 Why Us</span>
+        <h2>Baked with obsession</h2>
+      </div>
+      <div class="features">
+        <div class="feature"><div class="ico">🧈</div><h4>Premium ingredients</h4><p>Belgian chocolate, real butter, free-range eggs. Never a shortcut.</p></div>
+        <div class="feature"><div class="ico">🔥</div><h4>Baked fresh daily</h4><p>We bake to order in small batches so every bite is soft and gooey.</p></div>
+        <div class="feature"><div class="ico">💵</div><h4>Cash on Delivery</h4><p>No cards, no fuss. Pay in cash only when your brownies arrive.</p></div>
+        <div class="feature"><div class="ico">🚚</div><h4>Fast local delivery</h4><p>Free delivery on orders over Rs 2000. Warm to your doorstep.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STORY -->
+  <section class="section" id="story">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">📖 Our Story</span>
+        <h2>From our oven, with love</h2>
+        <p>Brownie Bliss started in a tiny home kitchen with one goal: the fudgiest brownie in town. Today we still bake every batch by hand, the same way — because you can taste the difference. No preservatives, no factory lines, just chocolate done right.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <a href="/" class="brand"><span class="logo">🍫</span> Brownie Bliss</a>
+      <div>Cash on Delivery only · Baked fresh daily · Made with 💛</div>
+      <div>© 2026 Brownie Bliss</div>
+    </div>
+  </footer>
+
+  <!-- CART DRAWER -->
+  <div class="drawer-overlay" id="drawerOverlay" onclick="closeCart()"></div>
+  <aside class="drawer" id="drawer" aria-label="Shopping cart">
+    <div class="drawer-head">
+      <h3>Your Cart 🛒</h3>
+      <button class="drawer-close" onclick="closeCart()">×</button>
+    </div>
+    <div class="drawer-body" id="cartBody"></div>
+    <div class="drawer-foot" id="cartFoot"></div>
+  </aside>
+
+  <!-- CHECKOUT MODAL -->
+  <div class="modal-overlay" id="checkoutModal">
+    <div class="modal" id="checkoutInner"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
