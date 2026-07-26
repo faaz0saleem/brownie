@@ -283,7 +283,28 @@ function order_create(array $items, array $customer, ?string $userId): array {
   ]);
   if (!$userId) { db()->prepare("UPDATE orders SET user_id=? WHERE id=?")->execute([$user['id'],$order['id']]); $order['userId']=$user['id']; }
 
+  notify_order($order);
   return ['order' => $order];
+}
+
+// Email the shop owner when an order arrives (PHP mail, works on Hostinger).
+// Set ORDER_NOTIFY_TO (or CONTACT_EMAIL) in .env to receive these.
+function notify_order(array $o): void {
+  $to = env('ORDER_NOTIFY_TO', env('CONTACT_EMAIL'));
+  if (!$to) return;
+  $cur = cfg()['currency'];
+  $lines = '';
+  foreach ($o['items'] as $li)
+    $lines .= "- {$li['qty']}x {$li['name']}" . ($li['size'] ? " ({$li['size']})" : '') . " - $cur " . number_format($li['lineTotal']) . "\n";
+  $c = $o['customer'];
+  $body = "New Fudgio order {$o['id']}\n\nName: {$c['name']}\nPhone: {$c['phone']}\nCity: {$c['city']}\nAddress: {$c['address']}\n"
+    . (!empty($c['notes']) ? "Notes: {$c['notes']}\n" : '')
+    . "\nItems:\n$lines\nSubtotal: $cur " . number_format($o['subtotal'])
+    . "\nDelivery: " . ($o['deliveryFee'] == 0 ? 'FREE' : "$cur " . number_format($o['deliveryFee']))
+    . "\nTOTAL: $cur " . number_format($o['total']) . " (Cash on Delivery)\n\nManage it in your admin dashboard.";
+  $from = env('SMTP_FROM', 'orders@' . preg_replace('#^https?://#', '', cfg()['siteUrl']));
+  $headers = "From: Fudgio Orders <$from>\r\nContent-Type: text/plain; charset=UTF-8";
+  @mail($to, "New order {$o['id']} - $cur " . number_format($o['total']) . ' (COD)', $body, $headers);
 }
 function orders_all(?string $userId = null): array {
   if ($userId) { $st = db()->prepare("SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC"); $st->execute([$userId]); $rows=$st->fetchAll(); }
