@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="fudgioGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2b978"/>
+      <stop offset="0.55" stop-color="#d98e4a"/>
+      <stop offset="1" stop-color="#ff6f91"/>
+    </linearGradient>
+    <linearGradient id="fudgioBrownie" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5b3a29"/>
+      <stop offset="1" stop-color="#2b1a12"/>
+    </linearGradient>
+  </defs>
+  <g id="mark">
+    <rect x="1" y="1" width="30" height="30" rx="8" fill="url(#fudgioGrad)"/>
+    <rect x="6.5" y="8.5" width="19" height="15" rx="3.5" fill="url(#fudgioBrownie)"/>
+    <!-- crackle highlights -->
+    <path d="M9.5 12.5c2-1 4 0.6 6 0s4-1.4 6-0.4" stroke="#7a5236" stroke-width="1.1" stroke-linecap="round" fill="none" opacity="0.8"/>
+    <!-- F monogram -->
+    <path d="M13 11.4h6.4v2.3h-3.9v1.7h3.4v2.2h-3.4v3.6H13z" fill="#ffe9cf"/>
+  </g>
+</svg>

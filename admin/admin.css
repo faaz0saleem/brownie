@@ -130,8 +130,11 @@ select.status-select:focus { outline: none; border-color: var(--brand); }
 /* ===== Inventory ===== */
 .inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
 .inv-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-.inv-top { height: 90px; display: grid; place-items: center; font-size: 2.6rem; position: relative; }
-.inv-top .inactive-flag { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,.5); color: var(--bad); font-size: .68rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+.inv-top { height: 120px; display: grid; place-items: center; font-size: 2.6rem; position: relative; overflow: hidden; }
+.inv-top .inv-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.inv-top .inv-emoji { position: relative; z-index: 1; }
+.inv-top .inactive-flag { position: absolute; top: 8px; right: 8px; z-index: 2; background: rgba(0,0,0,.5); color: var(--bad); font-size: .68rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+.upload-label { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .inv-body { padding: 16px; }
 .inv-body h4 { font-size: 1rem; margin-bottom: 3px; }
 .inv-body .inv-meta { color: var(--dim); font-size: .8rem; margin-bottom: 12px; }

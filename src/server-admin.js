@@ -1,68 +1,88 @@
-// Admin dashboard server (port 3000).
+// Fudgio admin dashboard server (admin.fudgio.com). Password-protected.
+// This is a SEPARATE app from the storefront and is never linked from it.
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import './seed.js'; // ensure catalog exists
+import { config } from './config.js';
+import { initStore, store } from './data/index.js';
+import { seed } from './seed.js';
 import {
-  listProducts,
-  listOrders,
-  updateOrderStatus,
-  listUsers,
-  updateProduct,
-  createProduct,
-  analytics
-} from './store.js';
+  listProducts, listOrders, updateOrderStatus, listUsers, getUser,
+  updateProduct, createProduct, analytics, getOrder, ORDER_STATUSES
+} from './service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.ADMIN_PORT || 3000;
+const ADMIN_TOKEN = config.auth.adminToken;
 
-// Extremely light auth gate so the dashboard isn't wide open. Configure with
-// ADMIN_TOKEN; defaults to "brownie-admin" for local dev.
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'brownie-admin';
+app.use(express.json({ limit: '8mb' })); // room for base64 product images
+app.use(express.static(path.join(config.root, 'admin')));
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'admin')));
-
-// Login endpoint validates a token — must sit BEFORE the auth guard.
+// Login validates the admin password — must be BEFORE the guard.
 app.post('/api/login', (req, res) => {
   if ((req.body && req.body.token) === ADMIN_TOKEN) return res.json({ ok: true });
   res.status(401).json({ error: 'Wrong password.' });
 });
 
-// Guard the rest of the API (not the static login page or /api/login).
+// Guard the rest of the API.
 app.use('/api', (req, res, next) => {
   const token = req.get('x-admin-token') || req.query.token;
-  if (token !== ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'Unauthorized. Please log in.' });
-  }
+  if (token !== ADMIN_TOKEN) return res.status(401).json({ error: 'Unauthorized.' });
   next();
 });
 
-app.get('/api/analytics', (req, res) => res.json(analytics()));
-app.get('/api/orders', (req, res) => res.json(listOrders()));
-app.get('/api/users', (req, res) => res.json(listUsers()));
-app.get('/api/products', (req, res) => res.json(listProducts({ includeInactive: true })));
+app.get('/api/config', (req, res) => res.json({ statuses: ORDER_STATUSES, currency: config.brand.currency }));
+app.get('/api/analytics', async (req, res) => res.json(await analytics()));
+app.get('/api/orders', async (req, res) => res.json(await listOrders()));
+app.get('/api/orders/:id', async (req, res) => {
+  const o = await getOrder(req.params.id);
+  if (!o) return res.status(404).json({ error: 'Not found' });
+  res.json(o);
+});
+app.get('/api/users', async (req, res) => res.json(await listUsers()));
+app.get('/api/users/:id/orders', async (req, res) => res.json(await listOrders({ userId: req.params.id })));
+app.get('/api/products', async (req, res) => res.json(await listProducts({ includeInactive: true })));
 
-app.patch('/api/orders/:id', (req, res) => {
-  const result = updateOrderStatus(req.params.id, req.body.status);
+app.patch('/api/orders/:id', async (req, res) => {
+  const result = await updateOrderStatus(req.params.id, req.body.status);
   if (result.error) return res.status(400).json({ error: result.error });
   res.json(result.order);
 });
 
-app.patch('/api/products/:id', (req, res) => {
-  const result = updateProduct(req.params.id, req.body || {});
+app.patch('/api/products/:id', async (req, res) => {
+  const result = await updateProduct(req.params.id, req.body || {});
   if (result.error) return res.status(400).json({ error: result.error });
   res.json(result.product);
 });
 
-app.post('/api/products', (req, res) => {
-  const result = createProduct(req.body || {});
+app.post('/api/products', async (req, res) => {
+  const result = await createProduct(req.body || {});
   if (result.error) return res.status(400).json({ error: result.error });
   res.status(201).json(result.product);
 });
 
-app.listen(PORT, () => {
-  console.log(`📊 Brownie Bliss admin running at http://localhost:${PORT}`);
-  console.log(`   Admin password: ${ADMIN_TOKEN}`);
+// Set / replace a product's image (base64 data URI sent from the admin UI).
+app.put('/api/products/:id/image', async (req, res) => {
+  const { imageUrl } = req.body || {};
+  if (!imageUrl || typeof imageUrl !== 'string') return res.status(400).json({ error: 'No image provided.' });
+  if (imageUrl.length > 6_000_000) return res.status(400).json({ error: 'Image too large (max ~4MB).' });
+  const result = await updateProduct(req.params.id, { imageUrl });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result.product);
 });
+app.delete('/api/products/:id/image', async (req, res) => {
+  const result = await updateProduct(req.params.id, { imageUrl: null });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result.product);
+});
+
+export async function startAdmin() {
+  await initStore();
+  await seed();
+  app.listen(config.ports.admin, () => {
+    console.log(`📊 Fudgio admin running at http://localhost:${config.ports.admin}  (driver: ${store.driver})`);
+    console.log(`   Admin password: ${ADMIN_TOKEN}`);
+  });
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) startAdmin();
