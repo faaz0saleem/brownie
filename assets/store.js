@@ -98,18 +98,19 @@ var FUDGIO_SLOGAN = 'Life is short. Eat the brownie. 🍫 Handcrafted brownies, 
   });
 })();
 
-/* ---- Scroll reveal ---- */
+/* ---- Subtle entrance animation. Purely decorative: it only animates a
+   transform, so content is visible at all times regardless of JS. ---- */
 (function(){
   function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
   ready(function(){
-    var targets=document.querySelectorAll('.section-head,.card,.feature,.step,.quote,.cta-band,.panel,.hero-art');
-    if(!('IntersectionObserver' in window)){ targets.forEach(function(t){t.classList.add('in');}); return; }
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduce || !('IntersectionObserver' in window)) return;
+    document.documentElement.classList.add('js-reveal');
     var io=new IntersectionObserver(function(entries){
-      entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
-    },{rootMargin:'0px 0px -60px 0px',threshold:.06});
-    targets.forEach(function(t,i){
-      t.classList.add('reveal');
-      t.style.transitionDelay=Math.min(i%4*70,210)+'ms';
+      entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('reveal'); io.unobserve(e.target); } });
+    },{rootMargin:'0px 0px -40px 0px',threshold:0});
+    document.querySelectorAll('.section-head,.card,.feature,.step,.quote,.cta-band').forEach(function(t,i){
+      t.style.animationDelay=Math.min((i%4)*60,180)+'ms';
       io.observe(t);
     });
   });
