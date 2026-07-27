@@ -50,8 +50,9 @@ else {
     +'</div><div class="field-label">Quantity</div>'
     +'<div class="stepper"><button id="qm">−</button><span id="qv">1</span><button id="qp">+</button></div>'
     +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:22px">'
-    +'<button class="btn btn-primary" id="add">🛒 Add to cart · <span id="bt">'+money(p.sizes[0].price)+'</span></button>'
-    +'<a href="/cart" class="btn btn-ghost">View cart</a></div>'
+    +'<button class="btn btn-ghost" id="add">🛒 Add to cart · <span id="bt">'+money(p.sizes[0].price)+'</span></button>'
+    +'<button class="btn btn-primary" id="buy">⚡ Buy now</button></div>'
+    +'<div style="margin-top:10px"><a href="/cart" style="color:var(--accent);font-weight:600;font-size:.9rem">View cart →</a></div>'
     +'<div class="allergen-box"><h4>🥜 Allergen information</h4><div class="allergen-list">'+p.allergens.map(function(a){return '<span>'+a+'</span>';}).join('')+'</div></div>'
     +'<div class="cod" style="margin-top:16px">💵 Cash on Delivery only — pay when it arrives</div>'
     +'<a href="/menu" class="back-link">← Back to menu</a>'
@@ -62,6 +63,7 @@ else {
   document.getElementById('qm').onclick=function(){ state.qty=Math.max(1,state.qty-1); sync(); };
   document.getElementById('qp').onclick=function(){ state.qty=Math.min(20,state.qty+1); sync(); };
   document.getElementById('add').onclick=function(){ addToCart(p,state.size,state.price,state.qty); };
+  document.getElementById('buy').onclick=function(){ addToCart(p,state.size,state.price,state.qty); location.href='/checkout'; };
 }
 updateCount();
 </script>
