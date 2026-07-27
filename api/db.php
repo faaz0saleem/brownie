@@ -126,6 +126,23 @@ function db_init(PDO $pdo, string $driver): void {
 
   $count = (int) $pdo->query("SELECT COUNT(*) AS c FROM products")->fetch()['c'];
   if ($count === 0) db_seed($pdo);
+
+  // Migration: make sure every product offers a single-brownie option.
+  try {
+    $rows = $pdo->query("SELECT id, sizes FROM products")->fetchAll();
+    $upd = $pdo->prepare("UPDATE products SET sizes=? WHERE id=?");
+    foreach ($rows as $r) {
+      $sizes = json_decode($r['sizes'] ?? '[]', true) ?: [];
+      $has = false;
+      foreach ($sizes as $s) if (stripos($s['label'] ?? '', 'single') !== false) { $has = true; break; }
+      if (!$has && $sizes) {
+        $boxPrice = (int)($sizes[0]['price'] ?? 900);
+        $single = ['label' => 'Single brownie', 'price' => max(50, (int)round($boxPrice / 6 / 10) * 10 + 40)];
+        array_unshift($sizes, $single);
+        $upd->execute([json_encode($sizes), $r['id']]);
+      }
+    }
+  } catch (Throwable $e) { /* non-fatal */ }
 }
 
 function db_seed(PDO $pdo): void {
@@ -134,17 +151,17 @@ function db_seed(PDO $pdo): void {
     ['chocolate', 'Classic Chocolate', 'The original, impossibly fudgy',
      'Dense, gooey and deeply chocolatey with a crackly, paper-thin top. Made from our secret small-batch recipe using premium dark chocolate and real butter.',
      900, 'linear-gradient(135deg,#5b3a29,#2b1a12)', '🍫',
-     [['label'=>'Box of 6','price'=>900],['label'=>'Box of 9','price'=>1290],['label'=>'Box of 12','price'=>1650]],
+     [['label'=>'Single brownie','price'=>190],['label'=>'Box of 6','price'=>900],['label'=>'Box of 9','price'=>1290],['label'=>'Box of 12','price'=>1650]],
      ['Gluten (wheat)','Dairy','Eggs','Soy'], 0, 60, 0],
     ['nutty-delight', 'Nutty Delight', 'Loaded with toasted nuts',
      'A rich chocolate brownie packed with roasted walnuts and hazelnuts for a satisfying crunch in every bite. Made from our secret small-batch recipe.',
      1050, 'linear-gradient(135deg,#6d4c2f,#3a2417)', '🌰',
-     [['label'=>'Box of 6','price'=>1050],['label'=>'Box of 9','price'=>1490],['label'=>'Box of 12','price'=>1920]],
+     [['label'=>'Single brownie','price'=>220],['label'=>'Box of 6','price'=>1050],['label'=>'Box of 9','price'=>1490],['label'=>'Box of 12','price'=>1920]],
      ['Tree nuts (walnut, hazelnut)','Gluten (wheat)','Dairy','Eggs','Soy'], 1, 45, 1],
     ['salted-caramel', 'Salted Caramel', 'Sweet, salty, unforgettable',
      'Ribbons of golden salted caramel swirled through a fudgy chocolate brownie and finished with a pinch of flaky sea salt. Made from our secret small-batch recipe.',
      1050, 'linear-gradient(135deg,#a06a34,#3b230f)', '🍯',
-     [['label'=>'Box of 6','price'=>1050],['label'=>'Box of 9','price'=>1490],['label'=>'Box of 12','price'=>1920]],
+     [['label'=>'Single brownie','price'=>220],['label'=>'Box of 6','price'=>1050],['label'=>'Box of 9','price'=>1490],['label'=>'Box of 12','price'=>1920]],
      ['Gluten (wheat)','Dairy','Eggs','Soy'], 0, 50, 2],
   ];
   $st = $pdo->prepare("INSERT INTO products
@@ -247,6 +264,10 @@ function order_create(array $items, array $customer, ?string $userId): array {
   $digits = preg_replace('/\D/', '', $customer['phone']);
   if (strlen($digits) < 10 || strlen($digits) > 15)
     return ['error' => 'Please enter a valid phone number.'];
+  // We currently deliver in Lahore only.
+  $allowedCity = env('DELIVERY_CITY', 'Lahore');
+  if (strcasecmp(trim($customer['city']), $allowedCity) !== 0)
+    return ['error' => "Sorry, we currently deliver in $allowedCity only."];
 
   $lineItems = []; $subtotal = 0;
   foreach ($items as $it) {

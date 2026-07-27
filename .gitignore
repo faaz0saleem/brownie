@@ -7,3 +7,6 @@ data/uploads/
 *.log
 .DS_Store
 _shot.mjs
+
+# committed, secret-free defaults (real DB password is set on the server only)
+!.env
