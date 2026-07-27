@@ -233,3 +233,127 @@ body{
 .slogan-inner{display:flex;align-items:center;justify-content:center;gap:10px}
 .slogan-text{display:inline-block}
 @media(max-width:600px){.slogan-bar{font-size:.78rem;padding:8px 12px}}
+
+/* ===================================================================
+   FRONTEND POLISH — richer visuals, motion, better product art
+   =================================================================== */
+
+/* ---- Product art: layered, textured, appetising ---- */
+.card-art,.pd-art,.hero-art{position:relative;isolation:isolate;overflow:hidden}
+.card-art::before,.pd-art::before{
+  content:"";position:absolute;inset:0;z-index:0;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255,235,205,.42), transparent 52%),
+    radial-gradient(circle at 78% 82%, rgba(0,0,0,.30), transparent 55%);
+}
+.card-art::after,.pd-art::after{
+  content:"";position:absolute;inset:0;z-index:0;opacity:.30;
+  background-image:
+    radial-gradient(rgba(255,255,255,.20) 1px, transparent 1.6px),
+    radial-gradient(rgba(0,0,0,.18) 1px, transparent 1.6px);
+  background-size:13px 13px, 19px 19px;
+  background-position:0 0, 7px 9px;
+}
+.card-art>span,.pd-art{z-index:1}
+.card-art>span{
+  position:relative;z-index:2;
+  filter:drop-shadow(0 12px 18px rgba(0,0,0,.42));
+  transition:transform .45s cubic-bezier(.2,.9,.3,1.3);
+}
+.card:hover .card-art>span{transform:scale(1.14) rotate(-5deg) translateY(-3px)}
+.pd-art{font-size:min(13rem,22vw)}
+.pd-art>*{position:relative;z-index:2;filter:drop-shadow(0 20px 30px rgba(0,0,0,.45))}
+
+/* ---- Cards: crisper lift + gradient edge on hover ---- */
+.card{transition:transform .3s cubic-bezier(.2,.8,.3,1),box-shadow .3s,border-color .3s;will-change:transform}
+.card:hover{transform:translateY(-8px)}
+.card-art .fav,.card-art .nut-tag{z-index:3;backdrop-filter:blur(6px)}
+.card-body h3{transition:color .2s}
+.card:hover .card-body h3{color:#a85413}
+
+/* Quick-add button that appears on card hover */
+.quick-add{
+  position:absolute;right:12px;bottom:12px;z-index:4;
+  background:#fff;color:#a85413;border:1px solid #f0cfa4;border-radius:999px;
+  font-weight:800;font-size:.8rem;padding:8px 14px;cursor:pointer;
+  box-shadow:0 8px 18px -8px rgba(120,70,30,.5);
+  opacity:0;transform:translateY(8px);transition:opacity .25s,transform .25s,background .2s;
+}
+.card:hover .quick-add{opacity:1;transform:translateY(0)}
+.quick-add:hover{background:#fff3e3}
+@media(hover:none){.quick-add{opacity:1;transform:none}}
+
+/* ---- Buttons: sheen + press feedback ---- */
+.btn{position:relative;overflow:hidden}
+.btn::after{
+  content:"";position:absolute;top:0;left:-120%;width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
+  transform:skewX(-20deg);transition:left .6s;
+}
+.btn:hover::after{left:130%}
+.btn:active{transform:translateY(1px) scale(.99)}
+
+/* ---- Scroll reveal ---- */
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.2,.7,.3,1),transform .7s cubic-bezier(.2,.7,.3,1)}
+.reveal.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+
+/* ---- Hero refinements ---- */
+.hero{padding-top:56px}
+.hero-art{border-radius:32px}
+.hero-art .big{filter:drop-shadow(0 26px 34px rgba(120,60,20,.4))}
+.hero-badges b{font-size:1.9rem;line-height:1}
+.hero-badges div{padding-right:22px;border-right:1px solid var(--line)}
+.hero-badges div:last-child{border-right:none;padding-right:0}
+
+/* ---- Section rhythm & headings ---- */
+.section-head h2{letter-spacing:-.5px}
+.section-head h2::after{
+  content:"";display:block;width:56px;height:4px;border-radius:4px;margin:14px auto 0;
+  background:linear-gradient(90deg,var(--caramel),var(--pink));
+}
+.section-head[style*="left"] h2::after{margin-left:0}
+
+/* ---- Testimonials ---- */
+.quotes{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:22px}
+.quote{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow);position:relative}
+.quote::before{content:"“";position:absolute;top:6px;right:18px;font-family:var(--display);font-size:4.4rem;color:#f3d2a8;line-height:1}
+.quote .stars{color:#e8a33c;margin-bottom:10px;letter-spacing:2px}
+.quote p{color:var(--cream-dim);margin-bottom:16px;position:relative;z-index:1}
+.quote .who{display:flex;align-items:center;gap:11px}
+.quote .who .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--caramel),var(--pink))}
+.quote .who b{font-size:.92rem;color:#2b1a10;display:block}
+.quote .who span{font-size:.8rem;color:var(--cream-faint)}
+
+/* ---- Footer: multi-column ---- */
+.foot-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1.2fr;gap:32px;text-align:left;padding-bottom:26px}
+.foot-grid h4{font-size:.78rem;text-transform:uppercase;letter-spacing:1.4px;color:var(--cream-faint);margin-bottom:14px}
+.foot-grid a{display:block;color:var(--cream-dim);padding:5px 0;font-size:.92rem;transition:color .2s}
+.foot-grid a:hover{color:#a85413}
+.foot-brand p{color:var(--cream-dim);font-size:.9rem;margin-top:10px;max-width:270px}
+.foot-bottom{border-top:1px solid var(--line);padding-top:20px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:.85rem}
+@media(max-width:820px){.foot-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.foot-grid{grid-template-columns:1fr}}
+
+/* ---- Mobile sticky buy bar (product page) ---- */
+.buy-bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:90;display:none;
+  background:rgba(255,250,243,.97);border-top:1px solid var(--line);
+  padding:10px 16px;gap:10px;align-items:center;
+  box-shadow:0 -6px 24px -12px rgba(70,40,20,.4);
+}
+.buy-bar .bb-price{font-family:var(--display);font-weight:800;color:#a85413;font-size:1.1rem;white-space:nowrap}
+.buy-bar .btn{flex:1;padding:12px 18px;font-size:.92rem}
+@media(max-width:720px){.buy-bar{display:flex}body{padding-bottom:72px}}
+
+/* ---- Nicer form + panel details ---- */
+.panel{border-radius:20px}
+.line .art{box-shadow:0 6px 14px -8px rgba(80,45,20,.5)}
+.badge{font-weight:800}
+::selection{background:#ffd9a8;color:#3a2415}
+html{scroll-padding-top:90px}
+
+/* ---- Focus ring for accessibility ---- */
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:3px solid rgba(201,118,46,.45);outline-offset:2px;border-radius:8px;
+}
