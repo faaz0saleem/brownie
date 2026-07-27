@@ -40,8 +40,30 @@ $seg = $path === '' ? [] : explode('/', $path);
 
 try {
   // ---- health ----
-  if ($path==='health' || $path==='healthz') out(['ok'=>true,'driver'=>db_driver(),'envFileFound'=>is_file(__DIR__.'/../.env'),'dbHostSet'=>(bool)env('DB_HOST'),'time'=>date('c')]);
+  if ($path==='health' || $path==='healthz') {
+    $envPath = dirname(__DIR__).'/.env';
+    $r = ['ok'=>true, 'driver'=>db_driver(), 'time'=>date('c'),
+      'envExpectedAt'=>$envPath, 'envFileFound'=>is_file($envPath), 'dbHostSet'=>(bool)env('DB_HOST')];
+    try {
+      $r['orders'] = (int) db()->query("SELECT COUNT(*) c FROM orders")->fetch()['c'];
+      $r['products'] = (int) db()->query("SELECT COUNT(*) c FROM products")->fetch()['c'];
+      $r['visits'] = (int) db()->query("SELECT COUNT(*) c FROM visits")->fetch()['c'];
+    } catch (Throwable $e) { $r['dbError'] = $e->getMessage(); }
+    if (db_driver()==='sqlite') {
+      $p = $GLOBALS['__fudgio_sqlite'] ?? '';
+      $r['sqlitePath'] = $p; $r['sqliteExists'] = $p && is_file($p);
+      $r['sqliteSizeBytes'] = ($p && is_file($p)) ? filesize($p) : 0;
+    }
+    out($r);
+  }
   if ($path==='config') out(['statuses'=>['Pending','Confirmed','Baking','Out for Delivery','Delivered','Cancelled'],'currency'=>cfg()['currency']]);
+
+  // Public: record a page visit (fire-and-forget from the storefront).
+  if ($path==='visit' && $method==='POST') {
+    $b = body();
+    record_visit($b['page'] ?? '/', $b['visitor'] ?? '', client_ip(), $_SERVER['HTTP_REFERER'] ?? '', $_SERVER['HTTP_USER_AGENT'] ?? '');
+    out(['ok'=>true]);
+  }
 
   // ---- products ----
   if ($seg[0]==='products') {

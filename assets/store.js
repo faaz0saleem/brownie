@@ -67,3 +67,13 @@ function toast(m){ var t=document.getElementById('toast'); if(!t)return; t.textC
 /* validation helpers */
 function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test((e||'').trim()); }
 function validPhone(p){ var d=(p||'').replace(/\D/g,''); return d.length>=10 && d.length<=15; }
+
+/* anonymous visit tracking → admin analytics (fire-and-forget) */
+(function(){
+  try{
+    var vid=localStorage.getItem('fud_vid');
+    if(!vid){ vid=Date.now().toString(36)+Math.random().toString(36).slice(2,8); localStorage.setItem('fud_vid',vid); }
+    var x=new XMLHttpRequest(); x.open('POST','/api/visit',true); x.setRequestHeader('Content-Type','application/json');
+    x.send(JSON.stringify({page:location.pathname||'/', visitor:vid}));
+  }catch(e){}
+})();

@@ -77,6 +77,8 @@ async function loadDashboard() {
   const a = await (await api('/analytics')).json();
   const t = a.totals;
   const kpis = [
+    { ico: '👀', label: 'Site visitors', value: t.visitors ?? 0, foot: `${t.pageViews ?? 0} total page views` },
+    { ico: '📈', label: 'Visitors today', value: t.visitorsToday ?? 0, foot: `${t.viewsToday ?? 0} views today` },
     { ico: '💰', label: 'Revenue', value: RS(t.revenue), foot: `${t.activeOrders} active orders` },
     { ico: '🧾', label: 'Total orders', value: t.orders, foot: `${t.pendingOrders} in progress · ${t.deliveredOrders} delivered` },
     { ico: '🍫', label: 'Brownies sold', value: t.unitsSold, foot: 'boxes delivered/pending' },
@@ -119,6 +121,27 @@ async function loadDashboard() {
       <div class="r-name"><span>${status}</span><span>${count}</span></div>
       <div class="r-track"><div class="r-fill" style="width:${(count / maxStatus) * 100}%"></div></div></div></div>`).join('')
     : '<div class="empty-state"><div class="em">🧾</div>No orders yet.</div>';
+
+  // ----- Visitor analytics (injected once) -----
+  const v = a.visits || { byDay: [], topPages: [] };
+  let vp = document.getElementById('visitorsPanel');
+  if (!vp) {
+    vp = document.createElement('div'); vp.id = 'visitorsPanel'; vp.className = 'two-col';
+    vp.innerHTML = `<div class="panel"><h3>👀 Visitors — last 14 days</h3><div class="panel-sub">Page views per day</div><div class="chart" id="visitsChart"></div></div>
+      <div class="panel"><h3>🔗 Top pages</h3><div class="panel-sub">Most viewed pages</div><div class="rank-list" id="topPages"></div></div>`;
+    document.getElementById('view-dashboard').appendChild(vp);
+  }
+  const maxV = Math.max(1, ...v.byDay.map((d) => d.views));
+  document.getElementById('visitsChart').innerHTML = v.byDay.map((d) => `
+    <div class="bar-col"><div class="bar-val">${d.views || ''}</div>
+      <div class="bar" style="height:${(d.views / maxV) * 100}%" title="${d.label}: ${d.views} views"></div>
+      <div class="bar-label">${d.label}</div></div>`).join('');
+  const maxP = Math.max(1, ...v.topPages.map((p) => p.views));
+  document.getElementById('topPages').innerHTML = v.topPages.length ? v.topPages.map((p) => `
+    <div class="rank-item"><div class="r-emoji">📄</div><div class="r-body">
+      <div class="r-name"><span>${p.page}</span><span>${p.views}</span></div>
+      <div class="r-track"><div class="r-fill" style="width:${(p.views / maxP) * 100}%"></div></div></div></div>`).join('')
+    : '<div class="empty-state"><div class="em">👀</div>No visits recorded yet.</div>';
 }
 
 // ---------- Orders ----------
