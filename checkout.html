@@ -50,7 +50,8 @@ function render(){
     +'<div class="err" id="err"></div>'
     +'<div class="fg"><label>Full name *</label><input id="fName" placeholder="e.g. Ayesha Khan"/></div>'
     +'<div class="frow"><div class="fg"><label>Phone *</label><input id="fPhone" type="tel" placeholder="03xx-xxxxxxx"/></div><div class="fg"><label>Email *</label><input id="fEmail" type="email" placeholder="you@email.com"/></div></div>'
-    +'<div class="fg"><label>City *</label><input id="fCity" placeholder="e.g. Karachi"/></div>'
+    +'<div class="fg"><label>City *</label><select id="fCity"><option value="Lahore">Lahore</option></select>'
+    +'<div style="font-size:.8rem;color:var(--cream-dim);margin-top:6px">🚚 We currently deliver in <strong>Lahore</strong> only.</div></div>'
     +'<div class="fg"><label>Delivery address *</label><textarea id="fAddr" rows="2" placeholder="House #, street, area"></textarea></div>'
     +'<div class="fg"><label>Notes (optional)</label><input id="fNotes" placeholder="Landmark, delivery time, etc."/></div>'
     +'<button class="btn btn-primary btn-block" id="place" onclick="place()">Place order (COD) 🍫</button></div>'
@@ -64,6 +65,7 @@ function place(){
   if(!name||!phone||!email||!city||!addr){ err.textContent='Please fill in name, phone, email, city and address.'; return; }
   if(!validPhone(phone)){ err.textContent='Please enter a valid phone number (10–15 digits).'; return; }
   if(!validEmail(email)){ err.textContent='Please enter a valid email address.'; return; }
+  if(city.toLowerCase()!=='lahore'){ err.textContent='Sorry, we currently deliver in Lahore only.'; return; }
   err.textContent='';
   var btn=document.getElementById('place'); btn.disabled=true; btn.textContent='Placing order…';
   var cart=getCart();
