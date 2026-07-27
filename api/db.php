@@ -29,7 +29,9 @@ function env_all(): array {
 }
 function env(string $k, $default = null) {
   $e = env_all();
-  return array_key_exists($k, $e) && $e[$k] !== '' ? $e[$k] : $default;
+  if (array_key_exists($k, $e) && $e[$k] !== '') return $e[$k];
+  $r = getenv($k);
+  return ($r !== false && $r !== '') ? $r : $default;
 }
 
 /* ---------------- config ---------------- */
@@ -225,8 +227,13 @@ function next_order_id(): string {
 }
 function order_create(array $items, array $customer, ?string $userId): array {
   if (!$items) return ['error' => 'Your cart is empty.'];
-  foreach (['name','phone','address','city'] as $f)
-    if (empty($customer[$f])) return ['error' => 'Please provide your name, phone, address and city.'];
+  foreach (['name','phone','email','address','city'] as $f)
+    if (empty($customer[$f])) return ['error' => 'Please provide your name, phone, email, address and city.'];
+  if (!filter_var($customer['email'], FILTER_VALIDATE_EMAIL))
+    return ['error' => 'Please enter a valid email address.'];
+  $digits = preg_replace('/\D/', '', $customer['phone']);
+  if (strlen($digits) < 10 || strlen($digits) > 15)
+    return ['error' => 'Please enter a valid phone number.'];
 
   $lineItems = []; $subtotal = 0;
   foreach ($items as $it) {
@@ -250,8 +257,9 @@ function order_create(array $items, array $customer, ?string $userId): array {
     $p = product_get($li['productId'], true);
     product_update($p['id'], ['stock'=>$p['stock']-$li['qty'], 'sold'=>$p['sold']+$li['qty']]);
   }
-  $c = cfg();
-  $delivery = $subtotal >= $c['freeDeliveryOver'] ? 0 : $c['deliveryFee'];
+  $s = settings_get();
+  if (empty($s['storeOpen'])) return ['error' => 'Sorry, we are currently not accepting orders. Please check back soon.'];
+  $delivery = $subtotal >= $s['freeDeliveryOver'] ? 0 : $s['deliveryFee'];
   $now = now_ms();
   $order = [
     'id'=>next_order_id(),'userId'=>$userId,'items'=>$lineItems,
@@ -356,6 +364,58 @@ function user_update(string $id, array $patch): ?array {
 function users_all(): array {
   $rows = db()->query("SELECT * FROM users ORDER BY COALESCE(last_order_at, created_at) DESC")->fetchAll();
   return array_map('map_user', $rows);
+}
+
+/* ---------------- order delete ---------------- */
+function order_delete(string $id): bool {
+  $o = order_get($id);
+  if (!$o) return false;
+  // restock if it wasn't cancelled
+  if ($o['status'] !== 'Cancelled') {
+    foreach ($o['items'] as $li) {
+      $p = product_get($li['productId'], true);
+      if ($p) product_update($p['id'], ['stock'=>$p['stock']+$li['qty'], 'sold'=>max(0,$p['sold']-$li['qty'])]);
+    }
+  }
+  db()->prepare("DELETE FROM orders WHERE id=?")->execute([$id]);
+  return true;
+}
+
+/* ---------------- settings (store config editable from admin) ---------------- */
+function settings_get(): array {
+  $c = cfg();
+  $defaults = ['deliveryFee'=>$c['deliveryFee'], 'freeDeliveryOver'=>$c['freeDeliveryOver'], 'storeOpen'=>true, 'announcement'=>''];
+  try {
+    db()->exec("CREATE TABLE IF NOT EXISTS settings (k VARCHAR(40) PRIMARY KEY, v TEXT)");
+    $row = db()->query("SELECT v FROM settings WHERE k='store'")->fetch();
+    if ($row) return array_merge($defaults, jdec($row['v'], []));
+  } catch (Throwable $e) {}
+  return $defaults;
+}
+function settings_set(array $patch): array {
+  db()->exec("CREATE TABLE IF NOT EXISTS settings (k VARCHAR(40) PRIMARY KEY, v TEXT)");
+  $cur = settings_get();
+  if (isset($patch['deliveryFee'])) $cur['deliveryFee'] = max(0,(int)$patch['deliveryFee']);
+  if (isset($patch['freeDeliveryOver'])) $cur['freeDeliveryOver'] = max(0,(int)$patch['freeDeliveryOver']);
+  if (isset($patch['storeOpen'])) $cur['storeOpen'] = !!$patch['storeOpen'];
+  if (isset($patch['announcement'])) $cur['announcement'] = (string)$patch['announcement'];
+  $v = json_encode($cur);
+  $driver = db_driver();
+  if ($driver==='mysql') db()->prepare("INSERT INTO settings (k,v) VALUES ('store',?) ON DUPLICATE KEY UPDATE v=?")->execute([$v,$v]);
+  else db()->prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('store',?)")->execute([$v]);
+  return $cur;
+}
+function orders_csv(): string {
+  $rows = orders_all();
+  $out = "Order,Date,Name,Phone,Email,City,Address,Items,Total,Payment,Status\n";
+  foreach ($rows as $o) {
+    $items = implode('; ', array_map(fn($li)=>"{$li['qty']}x {$li['name']}".($li['size']?" ({$li['size']})":''), $o['items']));
+    $c = $o['customer'];
+    $cells = [$o['id'], date('Y-m-d H:i', (int)($o['createdAt']/1000)), $c['name']??'', $c['phone']??'', $c['email']??'',
+      $c['city']??'', $c['address']??'', $items, $o['total'], $o['paymentMethod'], $o['status']];
+    $out .= implode(',', array_map(fn($x)=>'"'.str_replace('"','""',(string)$x).'"', $cells)) . "\n";
+  }
+  return $out;
 }
 
 /* ---------------- analytics ---------------- */

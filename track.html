@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Track your order · Fudgio</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/store.css"/>
+</head>
+<body>
+<header class="site-header"><div class="wrap nav">
+  <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/about">About</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></nav>
+  <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+</div></header>
+
+<main class="page"><div class="wrap" style="max-width:680px;margin:0 auto">
+  <div class="crumbs"><a href="/">Home</a> ›<span class="on">Track order</span></div>
+  <h1>Track your order</h1>
+  <div class="sub">Enter your tracking number and the phone number you used to order.</div>
+  <div class="panel">
+    <div class="err" id="err"></div>
+    <div class="frow"><div class="fg"><label>Tracking number</label><input id="tId" placeholder="FUD-1001"/></div>
+    <div class="fg"><label>Phone</label><input id="tPhone" type="tel" placeholder="03xx-xxxxxxx"/></div></div>
+    <button class="btn btn-primary btn-block" onclick="track()">Track order</button>
+  </div>
+  <div id="result" style="margin-top:22px"></div>
+</div></main>
+
+<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<div class="toast" id="toast"></div>
+
+<script src="/assets/store.js"></script>
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+var STEPS=['Pending','Confirmed','Baking','Out for Delivery','Delivered'];
+function badge(s){var m={Pending:'#ffb454',Confirmed:'#6ba7ff',Baking:'#6ba7ff','Out for Delivery':'#ffb86b',Delivered:'#4ccf8f',Cancelled:'#ff6b6b'};return '<span style="background:'+(m[s]||'#888')+'22;color:'+(m[s]||'#888')+';padding:5px 12px;border-radius:999px;font-weight:700;font-size:.8rem">'+s+'</span>';}
+function track(){
+  var err=document.getElementById('err'),res=document.getElementById('result');
+  err.textContent=''; res.innerHTML='';
+  var id=document.getElementById('tId').value.trim(), phone=document.getElementById('tPhone').value.trim();
+  if(!id||!phone){ err.textContent='Enter your tracking number and phone.'; return; }
+  var x=new XMLHttpRequest(); x.open('POST','/api/track',true); x.setRequestHeader('Content-Type','application/json');
+  x.onload=function(){
+    var o; try{o=JSON.parse(x.responseText);}catch(e){o={};}
+    if(x.status<200||x.status>=300){ err.textContent=(o&&o.error)||'No order found.'; return; }
+    var idx=STEPS.indexOf(o.status);
+    var timeline = o.status==='Cancelled'
+      ? '<div style="color:var(--bad);font-weight:700">✖ This order was cancelled.</div>'
+      : '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">'+STEPS.map(function(s,i){var on=i<=idx;return '<div style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:'+(on?'var(--ok)':'var(--cream-faint)')+'"><span style="width:10px;height:10px;border-radius:50%;background:currentColor"></span>'+s+'</div>';}).join('')+'</div>';
+    var items=o.items.map(function(i){return '<div class="srow"><span>'+i.emoji+' '+i.qty+'× '+i.name+(i.size?' ('+i.size+')':'')+'</span><span>'+money(i.lineTotal)+'</span></div>';}).join('');
+    res.innerHTML='<div class="panel"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px"><h3 style="margin:0">'+o.id+'</h3>'+badge(o.status)+'</div>'
+      +items
+      +'<div class="srow tot"><span>Total</span><span>'+money(o.total)+' (COD)</span></div>'
+      +'<div style="color:var(--cream-dim);font-size:.85rem;margin-top:10px">Delivering to '+o.customer.city+'</div>'
+      +timeline+'</div>';
+  };
+  x.onerror=function(){ err.textContent='Network error. Please try again.'; };
+  x.send(JSON.stringify({orderId:id,phone:phone}));
+}
+// Auto-fill + auto-track from the checkout link (?id=&phone=)
+(function(){ var q=new URLSearchParams(location.search); var id=q.get('id'),ph=q.get('phone');
+  if(id) document.getElementById('tId').value=id; if(ph) document.getElementById('tPhone').value=ph;
+  if(id&&ph) track();
+})();
+</script>
+</body>
+</html>

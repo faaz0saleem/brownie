@@ -22,7 +22,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(20
 function body(): array { $j = json_decode(file_get_contents('php://input'), true); return is_array($j) ? $j : []; }
 function out($d, int $code=200){ http_response_code($code); echo json_encode($d); exit; }
 function err(string $m, int $code=400){ out(['error'=>$m], $code); }
-function require_admin(){ $t=$_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ($_GET['token']??''); if($t!==cfg()['adminToken']) err('Unauthorized.',401); }
+function client_ip(){ $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? ''; return trim(explode(',', $ip)[0]); }
+function ip_allowed(){ $allow = env('ADMIN_ALLOW_IP'); if(!$allow) return true; $ip=client_ip(); foreach(explode(',',$allow) as $a){ if(trim($a)!=='' && trim($a)===$ip) return true; } return false; }
+function require_admin(){
+  if(!ip_allowed()) err('Forbidden: this device is not allowed to access the admin.',403);
+  $t=$_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ($_GET['token']??'');
+  if($t!==cfg()['adminToken']) err('Unauthorized.',401);
+}
 function current_user(): ?array { return isset($_SESSION['uid']) ? user_by_id($_SESSION['uid']) : null; }
 function public_user(?array $u): ?array { return $u ? ['id'=>$u['id'],'name'=>$u['name'],'email'=>$u['email'],'phone'=>$u['phone'],'avatarUrl'=>$u['avatarUrl']??null,'city'=>$u['city'],'address'=>$u['address'],'orders'=>$u['orders'],'totalSpent'=>$u['totalSpent']] : null; }
 
@@ -65,6 +71,7 @@ try {
     $oid=$seg[1]??'';
     if (count($seg)===2 && $method==='GET'){ $o=order_get($oid); $o?out($o):err('Not found',404); }
     if (count($seg)===2 && $method==='PATCH'){ $r=order_update_status($oid, body()['status']??''); isset($r['error'])?err($r['error']):out($r['order']); }
+    if (count($seg)===2 && $method==='DELETE'){ out(['ok'=>order_delete($oid)]); }
     err('Not found',404);
   }
 
@@ -108,8 +115,10 @@ try {
   // ---- admin: analytics / users ----
   if ($path==='analytics'){ require_admin(); out(analytics()); }
   if ($path==='users'){ require_admin(); out(users_all()); }
+  if ($path==='settings'){ require_admin(); if($method==='GET') out(settings_get()); out(settings_set(body())); }
+  if ($path==='export/orders'){ require_admin(); header('Content-Type: text/csv'); header('Content-Disposition: attachment; filename="fudgio-orders.csv"'); echo orders_csv(); exit; }
   if ($seg[0]==='users' && ($seg[2]??'')==='orders'){ require_admin(); out(orders_all($seg[1])); }
-  if ($path==='login' && $method==='POST'){ $ok=(body()['token']??'')===cfg()['adminToken']; out($ok?['ok'=>true]:['error'=>'Wrong password.'], $ok?200:401); }
+  if ($path==='login' && $method==='POST'){ if(!ip_allowed()) err('Forbidden: this device is not allowed to access the admin.',403); $ok=(body()['token']??'')===cfg()['adminToken']; out($ok?['ok'=>true]:['error'=>'Wrong password.'], $ok?200:401); }
 
   err('Not found: '.$path, 404);
 } catch (Throwable $e) {

@@ -63,3 +63,7 @@ function toast(m){ var t=document.getElementById('toast'); if(!t)return; t.textC
     updateCount();
   });
 })();
+
+/* validation helpers */
+function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test((e||'').trim()); }
+function validPhone(p){ var d=(p||'').replace(/\D/g,''); return d.length>=10 && d.length<=15; }

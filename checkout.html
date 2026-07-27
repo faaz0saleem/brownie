@@ -13,7 +13,7 @@
 <body>
 <header class="site-header"><div class="wrap nav">
   <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
-  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/#why">Why Us</a><a href="/#how">How it works</a><a href="/#contact">Contact</a></nav>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/about">About</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></nav>
   <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
 </div></header>
 
@@ -41,12 +41,13 @@ function summaryHtml(){
 }
 function render(){
   var root=document.getElementById('root');
-  if(!getCart().length){ root.innerHTML='<div class="empty"><div class="em">🛒</div><p>Your cart is empty.</p><a href="/#menu" class="btn btn-primary" style="margin-top:18px">Browse the menu</a></div>'; updateCount(); return; }
+  if(!getCart().length){ root.innerHTML='<div class="empty"><div class="em">🛒</div><p>Your cart is empty.</p><a href="/menu" class="btn btn-primary" style="margin-top:18px">Browse the menu</a></div>'; updateCount(); return; }
   root.innerHTML='<div class="split"><div class="panel"><h3>Delivery details</h3>'
     +'<div class="pay"><div class="ico">💵</div><div><b>Cash on Delivery</b><br><small>Pay in cash when your brownies arrive. No online payment.</small></div></div>'
     +'<div class="err" id="err"></div>'
     +'<div class="fg"><label>Full name *</label><input id="fName" placeholder="e.g. Ayesha Khan"/></div>'
-    +'<div class="frow"><div class="fg"><label>Phone *</label><input id="fPhone" placeholder="03xx-xxxxxxx"/></div><div class="fg"><label>City *</label><input id="fCity" placeholder="e.g. Karachi"/></div></div>'
+    +'<div class="frow"><div class="fg"><label>Phone *</label><input id="fPhone" type="tel" placeholder="03xx-xxxxxxx"/></div><div class="fg"><label>Email *</label><input id="fEmail" type="email" placeholder="you@email.com"/></div></div>'
+    +'<div class="fg"><label>City *</label><input id="fCity" placeholder="e.g. Karachi"/></div>'
     +'<div class="fg"><label>Delivery address *</label><textarea id="fAddr" rows="2" placeholder="House #, street, area"></textarea></div>'
     +'<div class="fg"><label>Notes (optional)</label><input id="fNotes" placeholder="Landmark, delivery time, etc."/></div>'
     +'<button class="btn btn-primary btn-block" id="place" onclick="place()">Place order (COD) 🍫</button></div>'
@@ -55,24 +56,31 @@ function render(){
 }
 function place(){
   var v=function(id){return (document.getElementById(id).value||'').trim();};
-  var name=v('fName'),phone=v('fPhone'),city=v('fCity'),addr=v('fAddr'),notes=v('fNotes');
-  if(!name||!phone||!city||!addr){ document.getElementById('err').textContent='Please fill in name, phone, city and address.'; return; }
+  var name=v('fName'),phone=v('fPhone'),email=v('fEmail'),city=v('fCity'),addr=v('fAddr'),notes=v('fNotes');
+  var err=document.getElementById('err');
+  if(!name||!phone||!email||!city||!addr){ err.textContent='Please fill in name, phone, email, city and address.'; return; }
+  if(!validPhone(phone)){ err.textContent='Please enter a valid phone number (10–15 digits).'; return; }
+  if(!validEmail(email)){ err.textContent='Please enter a valid email address.'; return; }
+  err.textContent='';
   var btn=document.getElementById('place'); btn.disabled=true; btn.textContent='Placing order…';
   var cart=getCart();
   var items=cart.map(function(i){return {productId:i.id,size:i.size,qty:i.qty};});
-  var customer={name:name,phone:phone,city:city,address:addr,notes:notes};
-  var lines=cart.map(function(i){return '• '+i.qty+'× '+i.name+(i.size?' ('+i.size+')':'')+' — '+money(i.price*i.qty);}).join('\n');
-  var msg='🍫 NEW FUDGIO ORDER (Cash on Delivery)\n\nName: '+name+'\nPhone: '+phone+'\nCity: '+city+'\nAddress: '+addr+'\n'+(notes?'Notes: '+notes+'\n':'')+'\nItems:\n'+lines+'\n\nSubtotal: '+money(cartSubtotal())+'\nDelivery: '+(cartDelivery()===0?'FREE':money(cartDelivery()))+'\nTOTAL: '+money(cartTotal())+' (COD)';
+  var customer={name:name,phone:phone,email:email,city:city,address:addr,notes:notes};
   var orderId='';
   try{ var x=new XMLHttpRequest(); x.open('POST','/api/orders',false); x.setRequestHeader('Content-Type','application/json'); x.send(JSON.stringify({items:items,customer:customer}));
-    if(x.status>=200&&x.status<300){ var o=JSON.parse(x.responseText).order; if(o&&o.id){orderId=o.id; msg='(Order '+o.id+')\n'+msg;} } }catch(e){}
-  if(FUDGIO.whatsapp) window.open('https://wa.me/'+FUDGIO.whatsapp+'?text='+encodeURIComponent(msg),'_blank');
-  else window.location.href='mailto:'+FUDGIO.email+'?subject='+encodeURIComponent('New Fudgio order — '+name)+'&body='+encodeURIComponent(msg);
+    if(x.status>=200&&x.status<300){ var o=JSON.parse(x.responseText).order; if(o&&o.id) orderId=o.id; }
+    else { var e=JSON.parse(x.responseText); err.textContent=(e&&e.error)||'Could not place order. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; return; }
+  }catch(ex){ err.textContent='Network error. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; return; }
   localStorage.removeItem('fudgio_cart'); updateCount();
-  document.getElementById('root').innerHTML='<div class="empty"><div class="em">✅</div><h1 style="font-family:var(--display)">Order placed!</h1>'
-    +(orderId?'<p style="color:var(--accent);font-weight:800;font-size:1.1rem;margin:8px 0">'+orderId+'</p>':'')
-    +'<p>Thanks, '+name+'! Your order has been sent to us'+(FUDGIO.whatsapp?' on WhatsApp':' by email')+'. We\'ll confirm and deliver — pay cash on delivery. 🍫</p>'
-    +'<a href="/#menu" class="btn btn-primary" style="margin-top:20px">Order more</a></div>';
+  var trackUrl='/track?id='+encodeURIComponent(orderId)+'&phone='+encodeURIComponent(phone);
+  document.getElementById('root').innerHTML='<div class="empty"><div class="em">✅</div>'
+    +'<h1 style="font-family:var(--display)">Order placed!</h1>'
+    +'<p style="margin:6px 0 2px">Your tracking number is</p>'
+    +'<div style="font-family:var(--display);font-weight:900;font-size:1.8rem;color:var(--accent);letter-spacing:1px;margin:6px 0 4px">'+orderId+'</div>'
+    +'<p>Thanks, '+name+'! We\'ve received your order and will confirm shortly. Pay cash on delivery. 🍫<br>Save your tracking number to check your order status anytime.</p>'
+    +'<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px">'
+    +'<a href="'+trackUrl+'" class="btn btn-primary">📦 Track your order</a>'
+    +'<a href="/menu" class="btn btn-ghost">Order more</a></div></div>';
   window.scrollTo(0,0);
 }
 render();

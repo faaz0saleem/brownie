@@ -52,7 +52,8 @@ const VIEW_META = {
   dashboard: ['Dashboard', 'Store overview & analytics'],
   orders: ['Orders', 'Manage and track every order'],
   inventory: ['Products & Stock', 'Images, stock levels & product management'],
-  customers: ['Customers', 'Your buyers and their locations']
+  customers: ['Customers', 'Your buyers and their locations'],
+  settings: ['Settings', 'Delivery, store availability & more']
 };
 document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -63,6 +64,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
     document.getElementById('view-' + view).classList.add('active');
     document.getElementById('viewTitle').textContent = VIEW_META[view][0];
     document.getElementById('viewSub').textContent = VIEW_META[view][1];
+    if (view === 'settings') loadSettings();
   });
 });
 
@@ -122,14 +124,39 @@ async function loadDashboard() {
 // ---------- Orders ----------
 const STATUS_CLASS = { Pending: 'b-pending', Confirmed: 'b-confirmed', Baking: 'b-confirmed', 'Out for Delivery': 'b-out', Delivered: 'b-delivered', Cancelled: 'b-cancelled' };
 const fmtDate = (ts) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+let ORDERS = [];
 async function loadOrders() {
-  const orders = await (await api('/orders')).json();
+  const res = await api('/orders');
+  if (!res.ok) { toast('Could not load orders'); return; } // never wipe the table on error
+  ORDERS = await res.json();
+  ensureOrderToolbar();
+  renderOrders();
+}
+function ensureOrderToolbar() {
+  if (document.getElementById('orderToolbar')) return;
+  const panel = document.querySelector('#view-orders .panel');
+  const wrap = panel.querySelector('.table-wrap');
+  const bar = document.createElement('div');
+  bar.id = 'orderToolbar'; bar.className = 'order-toolbar';
+  bar.innerHTML = `<input id="ordSearch" placeholder="🔎 Search name, phone or order #" oninput="renderOrders()">
+    <select id="ordFilter" onchange="renderOrders()"><option value="">All statuses</option>${STATUSES.map((s) => `<option>${s}</option>`).join('')}</select>
+    <button class="refresh-btn" onclick="exportOrders()">⬇ Export CSV</button>`;
+  panel.insertBefore(bar, wrap);
+}
+function renderOrders() {
+  const q = (document.getElementById('ordSearch')?.value || '').toLowerCase();
+  const f = document.getElementById('ordFilter')?.value || '';
+  const list = ORDERS.filter((o) => {
+    if (f && o.status !== f) return false;
+    if (q && ((o.id + ' ' + o.customer.name + ' ' + o.customer.phone + ' ' + o.customer.city).toLowerCase().indexOf(q) < 0)) return false;
+    return true;
+  });
   const body = document.getElementById('ordersBody');
-  if (!orders.length) { body.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="em">🧾</div>No orders yet. Share your shop link to get selling!</div></td></tr>`; return; }
-  body.innerHTML = orders.map((o) => `
+  if (!list.length) { body.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="em">🧾</div>No matching orders.</div></td></tr>`; return; }
+  body.innerHTML = list.map((o) => `
     <tr>
       <td class="mono"><b>${o.id}</b></td>
-      <td><b>${o.customer.name}</b><br/><span class="muted">${o.customer.phone}</span></td>
+      <td><b>${o.customer.name}</b><br/><span class="muted">${o.customer.phone}</span>${o.customer.email ? `<br/><span class="muted" style="font-size:.76rem">${o.customer.email}</span>` : ''}</td>
       <td>${o.customer.city}<br/><span class="muted" style="font-size:.8rem">${o.customer.address}</span></td>
       <td class="order-items">${o.items.map((i) => `<span class="oi">${i.emoji} ${i.qty}× ${i.name}${i.size ? ` <span class="muted">(${i.size})</span>` : ''}</span>`).join('<br/>')}</td>
       <td class="mono"><b>${RS(o.total)}</b></td>
@@ -137,17 +164,43 @@ async function loadOrders() {
       <td class="muted" style="white-space:nowrap">${fmtDate(o.createdAt)}</td>
       <td>
         <span class="badge ${STATUS_CLASS[o.status]}" style="margin-bottom:6px;display:inline-flex">${o.status}</span><br/>
-        <select class="status-select" onchange="setStatus('${o.id}', this.value)">
-          ${STATUSES.map((s) => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}
-        </select>
+        <select class="status-select" onchange="setStatus('${o.id}', this.value)">${STATUSES.map((s) => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="mini" onclick="orderDetail('${o.id}')">Details</button>
+          <button class="mini danger" onclick="deleteOrder('${o.id}')">Delete</button>
+        </div>
       </td>
     </tr>`).join('');
 }
 async function setStatus(id, status) {
-  await api('/orders/' + id, { method: 'PATCH', body: JSON.stringify({ status }) });
+  const res = await api('/orders/' + id, { method: 'PATCH', body: JSON.stringify({ status }) });
+  if (!res.ok) { toast('Could not update status'); return; }
+  const u = await res.json();
+  const o = ORDERS.find((x) => x.id === id); if (o) { o.status = u.status; o.statusHistory = u.statusHistory; }
   toast(`Order ${id} → ${status}`);
-  loadOrders(); loadDashboard(); loadInventory();
+  renderOrders(); loadDashboard();
 }
+async function deleteOrder(id) {
+  if (!confirm('Delete order ' + id + '? This restocks items and cannot be undone.')) return;
+  const res = await api('/orders/' + id, { method: 'DELETE' });
+  if (!res.ok) { toast('Delete failed'); return; }
+  ORDERS = ORDERS.filter((o) => o.id !== id);
+  toast('Order deleted'); renderOrders(); loadDashboard(); loadInventory();
+}
+function orderDetail(id) {
+  const o = ORDERS.find((x) => x.id === id); if (!o) return;
+  const steps = ['Pending', 'Confirmed', 'Baking', 'Out for Delivery', 'Delivered'];
+  const idx = steps.indexOf(o.status);
+  const tl = o.status === 'Cancelled' ? '<div style="color:var(--bad);font-weight:700">✖ Cancelled</div>'
+    : steps.map((s, i) => `<div style="color:${i <= idx ? 'var(--ok)' : 'var(--dim)'};font-weight:600">${i <= idx ? '●' : '○'} ${s}</div>`).join('');
+  showModal(`<h3 style="font-size:1.3rem;margin-bottom:6px">${o.id}</h3>
+    <span class="badge ${STATUS_CLASS[o.status]}">${o.status}</span>
+    <p style="margin:12px 0"><b>${o.customer.name}</b> · ${o.customer.phone}${o.customer.email ? ' · ' + o.customer.email : ''}<br>📍 ${o.customer.address}, ${o.customer.city}${o.customer.notes ? '<br><i>Note: ' + o.customer.notes + '</i>' : ''}</p>
+    <table style="width:100%;border-collapse:collapse">${o.items.map((i) => `<tr><td style="padding:6px 0">${i.emoji} ${i.qty}× ${i.name}${i.size ? ' (' + i.size + ')' : ''}</td><td style="text-align:right">${RS(i.lineTotal)}</td></tr>`).join('')}
+      <tr><td style="padding:8px 0;border-top:1px solid var(--line);font-weight:800">Total</td><td style="text-align:right;border-top:1px solid var(--line);font-weight:800">${RS(o.total)} (COD)</td></tr></table>
+    <h4 style="margin:16px 0 8px">Status timeline</h4><div style="display:flex;gap:16px;flex-wrap:wrap">${tl}</div>`);
+}
+function exportOrders() { window.location = API_BASE + '/export/orders?token=' + encodeURIComponent(TOKEN); }
 
 // ---------- Inventory ----------
 function stockChip(stock) {
@@ -157,7 +210,14 @@ function stockChip(stock) {
 }
 async function loadInventory() {
   const products = await (await api('/products')).json();
-  document.getElementById('invGrid').innerHTML = products.map((p) => `
+  const grid = document.getElementById('invGrid');
+  const addBar = document.getElementById('invAddBar');
+  if (!addBar) {
+    const bar = document.createElement('div'); bar.id = 'invAddBar'; bar.style.marginBottom = '16px';
+    bar.innerHTML = '<button class="btn-sm btn-save" style="max-width:180px" onclick="addProduct()">➕ Add new product</button>';
+    grid.parentNode.insertBefore(bar, grid);
+  }
+  grid.innerHTML = products.map((p) => `
     <div class="inv-card">
       <div class="inv-top" style="background:${p.gradient}">
         ${!p.active ? '<span class="inactive-flag">Hidden</span>' : ''}
@@ -175,6 +235,7 @@ async function loadInventory() {
         <div class="inv-row"><label>Stock</label><input type="number" id="stock-${p.id}" value="${p.stock}" /></div>
         <div class="inv-actions">
           <button class="btn-sm btn-save" onclick="saveProduct('${p.id}')">💾 Save</button>
+          <button class="btn-sm btn-toggle" onclick="editProductDetails('${p.id}')">✏️ Edit</button>
           <button class="btn-sm btn-toggle" onclick="toggleActive('${p.id}', ${p.active})">${p.active ? '🚫 Hide' : '✅ Show'}</button>
         </div>
         <div class="inv-actions" style="margin-top:8px">
@@ -257,4 +318,74 @@ document.getElementById('loginToken').addEventListener('keydown', (e) => { if (e
 if (TOKEN) {
   fetch(API_BASE + '/analytics', { credentials: 'include', headers: { 'x-admin-token': TOKEN } })
     .then((r) => { if (r.ok) showApp(); else logout(); }).catch(() => logout());
+}
+
+// ---------- Generic modal ----------
+function showModal(html) {
+  let m = document.getElementById('adminModal');
+  if (!m) { m = document.createElement('div'); m.id = 'adminModal'; m.className = 'admin-modal';
+    m.innerHTML = '<div class="am-inner"></div>'; m.onclick = (e) => { if (e.target === m) closeModal(); };
+    document.body.appendChild(m); }
+  m.querySelector('.am-inner').innerHTML = '<button class="am-close" onclick="closeModal()">×</button>' + html;
+  m.classList.add('open');
+}
+function closeModal() { const m = document.getElementById('adminModal'); if (m) m.classList.remove('open'); }
+
+// ---------- Settings ----------
+async function loadSettings() {
+  const el = document.getElementById('settingsBody'); if (!el) return;
+  const s = await (await api('/settings')).json();
+  el.innerHTML = `
+    <div class="panel" style="max-width:560px">
+      <h3>🏪 Store settings</h3>
+      <div class="inv-row"><label style="width:170px">Delivery fee (${CUR})</label><input type="number" id="setFee" value="${s.deliveryFee}"></div>
+      <div class="inv-row"><label style="width:170px">Free delivery over (${CUR})</label><input type="number" id="setFree" value="${s.freeDeliveryOver}"></div>
+      <div class="inv-row"><label style="width:170px">Store open for orders</label>
+        <select id="setOpen"><option value="1" ${s.storeOpen ? 'selected' : ''}>Open</option><option value="0" ${!s.storeOpen ? 'selected' : ''}>Closed</option></select></div>
+      <div class="inv-row"><label style="width:170px">Announcement</label><input id="setAnn" value="${(s.announcement || '').replace(/"/g, '&quot;')}" placeholder="Optional banner text"></div>
+      <button class="btn-sm btn-save" style="margin-top:10px" onclick="saveSettings()">💾 Save settings</button>
+    </div>`;
+}
+async function saveSettings() {
+  const body = { deliveryFee: document.getElementById('setFee').value, freeDeliveryOver: document.getElementById('setFree').value,
+    storeOpen: document.getElementById('setOpen').value === '1', announcement: document.getElementById('setAnn').value };
+  const res = await api('/settings', { method: 'POST', body: JSON.stringify(body) });
+  toast(res.ok ? 'Settings saved ✓' : 'Save failed');
+}
+
+// ---------- Product add / full edit ----------
+function productForm(p) {
+  p = p || { name: '', tagline: '', description: '', price: 900, stock: 30, emoji: '🍫', gradient: 'linear-gradient(135deg,#5b3a29,#2b1a12)', flavors: [], allergens: [], sizes: [], containsNuts: false, featured: false };
+  const sizes = (p.sizes && p.sizes.length ? p.sizes : [{ label: 'Box of 6', price: p.price }]).map((s) => `${s.label}:${s.price}`).join(', ');
+  return `<h3 style="font-size:1.3rem;margin-bottom:14px">${p.id ? 'Edit' : 'Add'} product</h3>
+    <div class="inv-row"><label style="width:120px">Name</label><input id="pfName" value="${(p.name || '').replace(/"/g, '&quot;')}"></div>
+    <div class="inv-row"><label style="width:120px">Tagline</label><input id="pfTag" value="${(p.tagline || '').replace(/"/g, '&quot;')}"></div>
+    <div class="inv-row"><label style="width:120px">Description</label><input id="pfDesc" value="${(p.description || '').replace(/"/g, '&quot;')}"></div>
+    <div class="inv-row"><label style="width:120px">Emoji</label><input id="pfEmoji" value="${p.emoji || '🍫'}" style="max-width:90px"></div>
+    <div class="inv-row"><label style="width:120px">Base price</label><input type="number" id="pfPrice" value="${p.price}"></div>
+    <div class="inv-row"><label style="width:120px">Stock</label><input type="number" id="pfStock" value="${p.stock}"></div>
+    <div class="inv-row"><label style="width:120px">Sizes</label><input id="pfSizes" value="${sizes}" placeholder="Box of 6:900, Box of 12:1650"></div>
+    <div class="inv-row"><label style="width:120px">Flavours</label><input id="pfFlav" value="${(p.flavors || []).join(', ')}"></div>
+    <div class="inv-row"><label style="width:120px">Allergens</label><input id="pfAll" value="${(p.allergens || []).join(', ')}"></div>
+    <div class="inv-row"><label style="width:120px">Contains nuts</label><select id="pfNuts"><option value="0" ${!p.containsNuts ? 'selected' : ''}>No</option><option value="1" ${p.containsNuts ? 'selected' : ''}>Yes</option></select></div>
+    <div class="inv-row"><label style="width:120px">Featured</label><select id="pfFeat"><option value="0" ${!p.featured ? 'selected' : ''}>No</option><option value="1" ${p.featured ? 'selected' : ''}>Yes</option></select></div>
+    <button class="btn-sm btn-save" style="margin-top:10px" onclick="submitProduct('${p.id || ''}')">💾 Save</button>`;
+}
+function parseSizes(str) {
+  return str.split(',').map((s) => s.trim()).filter(Boolean).map((pair) => {
+    const idx = pair.lastIndexOf(':'); return { label: pair.slice(0, idx).trim() || 'Box', price: parseInt(pair.slice(idx + 1), 10) || 0 };
+  });
+}
+function addProduct() { showModal(productForm(null)); }
+async function editProductDetails(id) { const p = (await (await api('/products')).json()).find((x) => x.id === id); showModal(productForm(p)); }
+async function submitProduct(id) {
+  const v = (x) => document.getElementById(x).value;
+  const data = { name: v('pfName'), tagline: v('pfTag'), description: v('pfDesc'), emoji: v('pfEmoji'),
+    price: v('pfPrice'), stock: v('pfStock'), sizes: parseSizes(v('pfSizes')),
+    flavors: v('pfFlav').split(',').map((s) => s.trim()).filter(Boolean),
+    allergens: v('pfAll').split(',').map((s) => s.trim()).filter(Boolean),
+    containsNuts: v('pfNuts') === '1', featured: v('pfFeat') === '1' };
+  const res = id ? await api('/products/' + id, { method: 'PATCH', body: JSON.stringify(data) })
+                 : await api('/products', { method: 'POST', body: JSON.stringify(data) });
+  if (res.ok) { toast('Product saved ✓'); closeModal(); loadInventory(); loadDashboard(); } else toast('Save failed');
 }
