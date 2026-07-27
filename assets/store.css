@@ -227,3 +227,9 @@ body{
 .site-footer{border-top:1px solid var(--line);color:var(--cream-faint);background:rgba(255,255,255,.55)}
 .toast{color:#fff}
 .pd-art{border:1px solid rgba(180,120,60,.22);box-shadow:0 20px 44px -22px rgba(120,70,30,.45)}
+
+/* ---- Slogan bar ---- */
+.slogan-bar{background:linear-gradient(90deg,#c9762e,#f2557c);color:#fff;font-weight:600;font-size:.88rem;padding:9px 0;text-align:center}
+.slogan-inner{display:flex;align-items:center;justify-content:center;gap:10px}
+.slogan-text{display:inline-block}
+@media(max-width:600px){.slogan-bar{font-size:.78rem;padding:8px 12px}}

@@ -44,6 +44,7 @@ async function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').classList.add('show');
   try { const cfg = await (await api('/config')).json(); STATUSES = cfg.statuses; CUR = cfg.currency; } catch {}
+  ensureQuickBar();
   refreshAll();
 }
 
@@ -190,6 +191,9 @@ function renderOrders() {
         <select class="status-select" onchange="setStatus('${o.id}', this.value)">${STATUSES.map((s) => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
         <div style="display:flex;gap:6px;margin-top:6px">
           <button class="mini" onclick="orderDetail('${o.id}')">Details</button>
+          <button class="mini" onclick="printOrder('${o.id}')" title="Print packing slip">🖨</button>
+          <button class="mini" onclick="contactCustomer('${o.id}','wa')" title="WhatsApp customer">💬</button>
+          <button class="mini" onclick="contactCustomer('${o.id}','call')" title="Call customer">📞</button>
           <button class="mini danger" onclick="deleteOrder('${o.id}')">Delete</button>
         </div>
       </td>
@@ -325,7 +329,7 @@ async function loadCustomers() {
   if (!users.length) { body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="em">👥</div>No customers yet.</div></td></tr>`; return; }
   body.innerHTML = users.map((u) => `
     <tr>
-      <td><b>${u.name || '—'}</b></td>
+      <td><b><a href="#" onclick="customerDetail('${u.id}','${(u.name||'').replace(/'/g,'')}');return false" style="color:var(--brand)">${u.name || '—'}</a></b></td>
       <td class="mono">${u.phone || ''}${u.email ? `<br/><span class="muted" style="font-size:.8rem">${u.email}</span>` : ''}</td>
       <td>${u.city ? '📍 ' + u.city : '<span class="muted">—</span>'}</td>
       <td class="muted" style="max-width:240px">${u.address || '—'}</td>
@@ -411,4 +415,147 @@ async function submitProduct(id) {
   const res = id ? await api('/products/' + id, { method: 'PATCH', body: JSON.stringify(data) })
                  : await api('/products', { method: 'POST', body: JSON.stringify(data) });
   if (res.ok) { toast('Product saved ✓'); closeModal(); loadInventory(); loadDashboard(); } else toast('Save failed');
+}
+
+/* ================= EXTRA ADMIN FUNCTIONS ================= */
+
+// --- 1. Print / packing slip for an order ---
+function printOrder(id){
+  var o=ORDERS.find(function(x){return x.id===id;}); if(!o) return;
+  var rows=o.items.map(function(i){return '<tr><td>'+i.qty+'× '+i.name+(i.size?' ('+i.size+')':'')+'</td><td style="text-align:right">'+RS(i.lineTotal)+'</td></tr>';}).join('');
+  var w=window.open('','_blank','width=620,height=760');
+  w.document.write('<html><head><title>'+o.id+' — Fudgio</title><style>'
+    +'body{font-family:Arial,sans-serif;padding:28px;color:#222}h1{margin:0 0 4px;font-size:22px}'
+    +'.muted{color:#666;font-size:13px}table{width:100%;border-collapse:collapse;margin:16px 0}'
+    +'td{padding:7px 0;border-bottom:1px solid #eee}.tot td{font-weight:800;border-top:2px solid #333;border-bottom:none}'
+    +'.box{border:1px solid #ddd;border-radius:8px;padding:14px;margin-top:14px}</style></head><body>'
+    +'<h1>🍫 Fudgio — Packing Slip</h1><div class="muted">Order '+o.id+' · '+fmtDate(o.createdAt)+' · '+o.status+'</div>'
+    +'<div class="box"><b>'+o.customer.name+'</b><br>'+o.customer.phone+(o.customer.email?'<br>'+o.customer.email:'')
+    +'<br>'+o.customer.address+', '+o.customer.city+(o.customer.notes?'<br><i>Note: '+o.customer.notes+'</i>':'')+'</div>'
+    +'<table>'+rows+'<tr><td>Delivery</td><td style="text-align:right">'+(o.deliveryFee===0?'FREE':RS(o.deliveryFee))+'</td></tr>'
+    +'<tr class="tot"><td>TOTAL (Cash on Delivery)</td><td style="text-align:right">'+RS(o.total)+'</td></tr></table>'
+    +'<p class="muted">Thank you for ordering from Fudgio 💛</p></body></html>');
+  w.document.close(); w.print();
+}
+
+// --- 2. Call / WhatsApp / email the customer directly ---
+function contactCustomer(id, how){
+  var o=ORDERS.find(function(x){return x.id===id;}); if(!o) return;
+  var phone=(o.customer.phone||'').replace(/\D/g,'');
+  if(how==='call') location.href='tel:'+phone;
+  else if(how==='wa'){
+    var msg='Hi '+o.customer.name+', this is Fudgio about your order '+o.id+' ('+RS(o.total)+', Cash on Delivery). ';
+    var wa=phone.replace(/^0/,'92');
+    window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank');
+  } else if(how==='mail' && o.customer.email){
+    location.href='mailto:'+o.customer.email+'?subject='+encodeURIComponent('Your Fudgio order '+o.id);
+  }
+}
+
+// --- 3. Bulk-advance all pending orders ---
+async function bulkAdvance(){
+  var pend=ORDERS.filter(function(o){return o.status==='Pending';});
+  if(!pend.length){ toast('No pending orders'); return; }
+  if(!confirm('Mark all '+pend.length+' Pending order(s) as Confirmed?')) return;
+  for(const o of pend){ await api('/orders/'+o.id,{method:'PATCH',body:JSON.stringify({status:'Confirmed'})}); o.status='Confirmed'; }
+  toast(pend.length+' order(s) confirmed'); renderOrders(); loadDashboard();
+}
+
+// --- 4. Restock all low/out-of-stock products at once ---
+async function restockAll(){
+  var qty=prompt('Restock every product to how many units?','50');
+  if(!qty) return;
+  var products=await (await api('/products')).json();
+  for(const p of products){ await api('/products/'+p.id,{method:'PATCH',body:JSON.stringify({stock:parseInt(qty,10)||0})}); }
+  toast('All products restocked to '+qty); loadInventory(); loadDashboard();
+}
+
+// --- 5. Customer detail: full order history for one buyer ---
+async function customerDetail(id,name){
+  var orders=await (await api('/users/'+id+'/orders')).json();
+  var rows=orders.length?orders.map(function(o){
+    return '<tr><td><b>'+o.id+'</b></td><td>'+fmtDate(o.createdAt)+'</td><td>'+RS(o.total)+'</td><td><span class="badge '+STATUS_CLASS[o.status]+'">'+o.status+'</span></td></tr>';
+  }).join(''):'<tr><td colspan="4" class="muted">No orders.</td></tr>';
+  var spend=orders.filter(function(o){return o.status!=='Cancelled';}).reduce(function(s,o){return s+o.total;},0);
+  showModal('<h3 style="font-size:1.3rem;margin-bottom:4px">'+name+'</h3>'
+    +'<div class="muted" style="margin-bottom:14px">'+orders.length+' order(s) · '+RS(spend)+' lifetime</div>'
+    +'<table style="width:100%;border-collapse:collapse">'+rows+'</table>');
+}
+
+// --- 6. Revenue report by period ---
+async function revenueReport(){
+  var orders=ORDERS.filter(function(o){return o.status!=='Cancelled';});
+  var now=Date.now(), day=864e5;
+  function sum(days){ var c=now-days*day; return orders.filter(function(o){return o.createdAt>=c;}).reduce(function(s,o){return s+o.total;},0); }
+  function cnt(days){ var c=now-days*day; return orders.filter(function(o){return o.createdAt>=c;}).length; }
+  var rows=[['Today',1],['Last 7 days',7],['Last 30 days',30],['Last 90 days',90],['All time',36500]]
+    .map(function(r){ return '<tr><td>'+r[0]+'</td><td style="text-align:right">'+cnt(r[1])+'</td><td style="text-align:right"><b>'+RS(sum(r[1]))+'</b></td></tr>'; }).join('');
+  showModal('<h3 style="font-size:1.3rem;margin-bottom:14px">💰 Revenue report</h3>'
+    +'<table style="width:100%;border-collapse:collapse">'
+    +'<tr><th style="text-align:left">Period</th><th style="text-align:right">Orders</th><th style="text-align:right">Revenue</th></tr>'
+    +rows+'</table><p class="muted" style="margin-top:12px;font-size:.82rem">Cancelled orders excluded.</p>');
+}
+
+// --- 7. Export customers to CSV ---
+async function exportCustomers(){
+  var users=await (await api('/users')).json();
+  var csv='Name,Phone,Email,City,Address,Orders,Total Spent\n'+users.map(function(u){
+    return [u.name,u.phone,u.email,u.city,u.address,u.orders,u.totalSpent]
+      .map(function(x){return '"'+String(x==null?'':x).replace(/"/g,'""')+'"';}).join(',');
+  }).join('\n');
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='fudgio-customers.csv'; a.click();
+  toast('Customers exported');
+}
+
+// --- 8. Today's kitchen list (what to bake) ---
+function kitchenList(){
+  var todayStart=new Date(); todayStart.setHours(0,0,0,0);
+  var live=ORDERS.filter(function(o){return ['Pending','Confirmed','Baking'].indexOf(o.status)>=0;});
+  var tally={};
+  live.forEach(function(o){ o.items.forEach(function(i){
+    var k=i.name+(i.size?' — '+i.size:''); tally[k]=(tally[k]||0)+i.qty; }); });
+  var keys=Object.keys(tally).sort();
+  var rows=keys.length?keys.map(function(k){return '<tr><td>'+k+'</td><td style="text-align:right"><b>'+tally[k]+'</b></td></tr>';}).join('')
+    :'<tr><td colspan="2" class="muted">Nothing to bake right now.</td></tr>';
+  showModal('<h3 style="font-size:1.3rem;margin-bottom:4px">👩‍🍳 Kitchen list</h3>'
+    +'<div class="muted" style="margin-bottom:14px">Everything in Pending / Confirmed / Baking</div>'
+    +'<table style="width:100%;border-collapse:collapse">'+rows+'</table>');
+}
+
+// --- 9. Toggle store open/closed from anywhere ---
+async function quickToggleStore(){
+  var s=await (await api('/settings')).json();
+  var next=!s.storeOpen;
+  if(!confirm(next?'Open the store for orders?':'Close the store? Customers will not be able to order.')) return;
+  await api('/settings',{method:'POST',body:JSON.stringify({storeOpen:next})});
+  toast(next?'Store is now OPEN':'Store is now CLOSED');
+  loadSettings();
+}
+
+// --- 10. Edit the site slogan / announcement ---
+async function editSlogan(){
+  var s=await (await api('/settings')).json();
+  var v=prompt('Slogan shown at the top of every page (leave blank for the default):', s.announcement||'');
+  if(v===null) return;
+  await api('/settings',{method:'POST',body:JSON.stringify({announcement:v})});
+  toast('Slogan updated');
+}
+
+// --- Wire the new buttons into the UI once the app is shown ---
+function ensureQuickBar(){
+  if(document.getElementById('quickBar')) return;
+  var top=document.querySelector('.topbar');
+  if(!top) return;
+  var bar=document.createElement('div');
+  bar.id='quickBar'; bar.className='order-toolbar'; bar.style.marginBottom='18px';
+  bar.innerHTML='<button class="refresh-btn" onclick="kitchenList()">👩‍🍳 Kitchen list</button>'
+    +'<button class="refresh-btn" onclick="revenueReport()">💰 Revenue report</button>'
+    +'<button class="refresh-btn" onclick="bulkAdvance()">✅ Confirm all pending</button>'
+    +'<button class="refresh-btn" onclick="restockAll()">📦 Restock all</button>'
+    +'<button class="refresh-btn" onclick="exportCustomers()">⬇ Export customers</button>'
+    +'<button class="refresh-btn" onclick="editSlogan()">📣 Edit slogan</button>'
+    +'<button class="refresh-btn" onclick="quickToggleStore()">🏪 Open/Close store</button>';
+  top.parentNode.insertBefore(bar, top.nextSibling);
 }

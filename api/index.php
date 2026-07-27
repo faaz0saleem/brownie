@@ -58,6 +58,12 @@ try {
   }
   if ($path==='config') out(['statuses'=>['Pending','Confirmed','Baking','Out for Delivery','Delivered','Cancelled'],'currency'=>cfg()['currency']]);
 
+  // Public: the slogan / announcement shown on every storefront page.
+  if ($path==='announcement' && $method==='GET') {
+    $s = settings_get();
+    out(['announcement' => $s['announcement'] ?? '']);
+  }
+
   // Public: record a page visit (fire-and-forget from the storefront).
   if ($path==='visit' && $method==='POST') {
     $b = body();

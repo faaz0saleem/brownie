@@ -77,3 +77,23 @@ function validPhone(p){ var d=(p||'').replace(/\D/g,''); return d.length>=10 && 
     x.send(JSON.stringify({page:location.pathname||'/', visitor:vid}));
   }catch(e){}
 })();
+
+/* ---- Slogan / announcement bar (shown on every page, editable in admin) ---- */
+var FUDGIO_SLOGAN = 'Life is short. Eat the brownie. 🍫 Handcrafted brownies, delivered fresh across Lahore — Cash on Delivery.';
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){
+    if(document.getElementById('sloganBar')) return;
+    var bar=document.createElement('div');
+    bar.id='sloganBar'; bar.className='slogan-bar';
+    bar.innerHTML='<div class="wrap slogan-inner"><span class="slogan-text">'+FUDGIO_SLOGAN+'</span></div>';
+    document.body.insertBefore(bar, document.body.firstChild);
+    // Let the admin override the slogan from Settings → Announcement
+    try{
+      var x=new XMLHttpRequest(); x.open('GET','/api/announcement',true);
+      x.onload=function(){ try{ var d=JSON.parse(x.responseText);
+        if(d && d.announcement){ bar.querySelector('.slogan-text').textContent=d.announcement; } }catch(e){} };
+      x.send();
+    }catch(e){}
+  });
+})();
