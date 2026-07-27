@@ -2,6 +2,7 @@
 // head (SEO meta, Open Graph, JSON-LD), header and footer. No admin links here —
 // the admin lives on a separate hidden domain.
 import { config } from './config.js';
+import { recaptchaClientConfig } from './recaptcha.js';
 
 const B = config.brand;
 
@@ -20,6 +21,10 @@ function head({ title, description, canonical, ogImage, jsonLd, extraHead = '' }
   const url = canonical || B.siteUrl;
   const img = ogImage || `${B.siteUrl}/assets/og-image.png`;
   const ld = jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : '';
+  const recaptcha = recaptchaClientConfig();
+  const recaptchaScript = recaptcha.enabled
+    ? `<script src="https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(recaptcha.siteKey)}"></script>`
+    : '';
   return `
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -44,7 +49,8 @@ function head({ title, description, canonical, ogImage, jsonLd, extraHead = '' }
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/styles.css" />
-  <script>window.FUDGIO=${JSON.stringify({ currency: B.currency, freeDeliveryOver: B.freeDeliveryOver, deliveryFee: B.deliveryFee, googleEnabled: config.auth.google.enabled })};</script>
+  <script>window.FUDGIO=${JSON.stringify({ currency: B.currency, freeDeliveryOver: B.freeDeliveryOver, deliveryFee: B.deliveryFee, googleEnabled: config.auth.google.enabled, recaptcha })};</script>
+  ${recaptchaScript}
   ${ld}
   ${extraHead}`;
 }

@@ -1,5 +1,5 @@
 /* Fudgio shared storefront logic: catalog + cart (used by every page) */
-var FUDGIO = { whatsapp:'', email:'dev@solutioninn.com', currency:'Rs', freeOver:2500, deliveryFee:150, city:'Lahore' };
+var FUDGIO = { whatsapp:'', email:'faaz.saleem@fudgio.com', currency:'Rs', freeOver:2500, deliveryFee:150, city:'Lahore' };
 
 var PRODUCTS = [
   { id:'chocolate', slug:'chocolate', name:'Classic Chocolate', emoji:'🍫',

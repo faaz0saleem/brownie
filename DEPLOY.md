@@ -80,7 +80,7 @@ ADMIN_TOKEN=$(openssl rand -hex 24)          # your admin password
 COOKIE_SECRET=$(openssl rand -hex 48)        # session signing secret
 # DB_* as in section 3
 # GOOGLE_* as in section 6 (optional but requested)
-CONTACT_EMAIL=hello@fudgio.com
+CONTACT_EMAIL=faaz.saleem@fudgio.com
 CONTACT_PHONE=+92 3xx xxxxxxx
 ```
 (Generate the secrets and paste the output — don’t keep the `$(...)`.)
@@ -231,7 +231,7 @@ The app is **functionally complete**. These are the real-world steps before publ
 - [ ] **Google Business + Analytics** — verify the site in Google Search Console, add analytics, submit `sitemap.xml`.
 - [ ] **Legal** — review the Privacy Policy & Terms (templates are included) for your jurisdiction.
 - [ ] **Rate-limiting / anti-spam** on order and auth endpoints (e.g. `express-rate-limit`) to prevent abuse.
-- [ ] **A real business email** (hello@fudgio.com) and phone/WhatsApp number customers can reach.
+- [ ] **A real business email** (faaz.saleem@fudgio.com) and phone/WhatsApp number customers can reach.
 
 ### Nice-to-have (post-launch)
 - [ ] Discount / promo codes, minimum-order rules per area.
