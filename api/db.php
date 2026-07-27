@@ -78,9 +78,19 @@ function db(): PDO {
     $pdo = new PDO($dsn, $user, $pass, $opts);
     $GLOBALS['__fudgio_driver'] = 'mysql';
   } else {
-    $dir = __DIR__ . '/../data';
-    if (!is_dir($dir)) @mkdir($dir, 0775, true);
-    $pdo = new PDO('sqlite:' . $dir . '/fudgio.sqlite');
+    // Store the SQLite file OUTSIDE the web root by default so a git redeploy
+    // (which replaces public_html) can't wipe your orders. Override with
+    // DB_SQLITE_PATH in .env if you want a specific location.
+    $sqlitePath = env('DB_SQLITE_PATH');
+    if (!$sqlitePath) {
+      $candidates = [dirname(__DIR__, 2) . '/fudgio-data', __DIR__ . '/../data'];
+      $dir = null;
+      foreach ($candidates as $c) { if (@is_dir($c) || @mkdir($c, 0775, true)) { $dir = $c; break; } }
+      $dir = $dir ?: sys_get_temp_dir();
+      $sqlitePath = $dir . '/fudgio.sqlite';
+    }
+    $pdo = new PDO('sqlite:' . $sqlitePath);
+    $GLOBALS['__fudgio_sqlite'] = $sqlitePath;
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     $GLOBALS['__fudgio_driver'] = 'sqlite';
@@ -107,6 +117,9 @@ function db_init(PDO $pdo, string $driver): void {
     id VARCHAR(40) PRIMARY KEY, user_id VARCHAR(40), items TEXT, customer TEXT,
     subtotal INT, delivery_fee INT, total INT, payment_method VARCHAR(20),
     status VARCHAR(40), status_history TEXT, created_at BIGINT)");
+  $pdo->exec("CREATE TABLE IF NOT EXISTS visits (
+    id VARCHAR(40) PRIMARY KEY, visitor VARCHAR(40), page VARCHAR(191), ip VARCHAR(64),
+    referrer VARCHAR(255), ua VARCHAR(255), created_at BIGINT)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS counters (name VARCHAR(40) PRIMARY KEY, value BIGINT)");
   $pdo->exec("INSERT " . ($driver === 'mysql' ? 'IGNORE ' : 'OR IGNORE ') .
              "INTO counters (name, value) VALUES ('orderSeq', 1000)");
@@ -418,6 +431,40 @@ function orders_csv(): string {
   return $out;
 }
 
+/* ---------------- visitor tracking ---------------- */
+function record_visit(string $page, string $visitor, string $ip, string $ref, string $ua): void {
+  try {
+    $st = db()->prepare("INSERT INTO visits (id,visitor,page,ip,referrer,ua,created_at) VALUES (?,?,?,?,?,?,?)");
+    $st->execute([gen_id(), substr($visitor,0,40), substr($page,0,191), substr($ip,0,64), substr($ref,0,255), substr($ua,0,255), now_ms()]);
+  } catch (Throwable $e) { /* never break the page over analytics */ }
+}
+function visit_stats(): array {
+  try {
+    $rows = db()->query("SELECT visitor,page,created_at FROM visits")->fetchAll();
+  } catch (Throwable $e) { return ['totalViews'=>0,'uniqueVisitors'=>0,'viewsToday'=>0,'visitorsToday'=>0,'topPages'=>[],'byDay'=>[]]; }
+  $todayStart = strtotime('today') * 1000;
+  $visitors = []; $visitorsToday = []; $pages = []; $viewsToday = 0;
+  foreach ($rows as $r) {
+    $visitors[$r['visitor']] = true;
+    $pages[$r['page']] = ($pages[$r['page']] ?? 0) + 1;
+    if ((int)$r['created_at'] >= $todayStart) { $viewsToday++; $visitorsToday[$r['visitor']] = true; }
+  }
+  arsort($pages);
+  $topPages = [];
+  foreach (array_slice($pages, 0, 8, true) as $p => $n) $topPages[] = ['page'=>$p ?: '/', 'views'=>$n];
+  $byDay = [];
+  for ($i=13;$i>=0;$i--) {
+    $start = strtotime("today -$i days")*1000; $end=$start+86400000;
+    $v = 0; foreach ($rows as $r) if ((int)$r['created_at']>=$start && (int)$r['created_at']<$end) $v++;
+    $byDay[] = ['label'=>date('M j', (int)($start/1000)), 'views'=>$v];
+  }
+  return [
+    'totalViews'=>count($rows), 'uniqueVisitors'=>count($visitors),
+    'viewsToday'=>$viewsToday, 'visitorsToday'=>count($visitorsToday),
+    'topPages'=>$topPages, 'byDay'=>$byDay,
+  ];
+}
+
 /* ---------------- analytics ---------------- */
 function analytics(): array {
   $orders = orders_all(); $products = products_all(true); $users = users_all();
@@ -454,8 +501,10 @@ function analytics(): array {
 
   $units = 0; foreach ($active as $o) foreach ($o['items'] as $li) $units+=$li['qty'];
   $activeProducts = array_filter($products, fn($p)=>$p['active']);
+  $vs = visit_stats();
 
   return [
+    'visits'=>$vs,
     'totals'=>[
       'revenue'=>$revenue,'orders'=>count($orders),'activeOrders'=>count($active),
       'cancelledOrders'=>count($orders)-count($active),'deliveredOrders'=>count($delivered),
@@ -464,6 +513,7 @@ function analytics(): array {
       'products'=>count($activeProducts),
       'outOfStock'=>count(array_filter($products, fn($p)=>$p['active']&&$p['stock']===0)),
       'pendingOrders'=>count(array_filter($orders, fn($o)=>in_array($o['status'],['Pending','Confirmed','Baking'],true))),
+      'pageViews'=>$vs['totalViews'], 'visitors'=>$vs['uniqueVisitors'], 'viewsToday'=>$vs['viewsToday'], 'visitorsToday'=>$vs['visitorsToday'],
     ],
     'topProducts'=>$top,'salesByDay'=>$days,'cityBreakdown'=>$cityBreakdown,
     'statusCounts'=>(object)$statusCounts,'lowStock'=>$lowStock,
