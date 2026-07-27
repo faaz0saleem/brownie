@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { initStore, store } from './data/index.js';
 import { seed } from './seed.js';
+import { recaptchaClientConfig, verifyRecaptcha } from './recaptcha.js';
 import {
   listProducts, listOrders, updateOrderStatus, listUsers, getUser,
   updateProduct, createProduct, analytics, getOrder, ORDER_STATUSES
@@ -16,10 +17,17 @@ const app = express();
 const ADMIN_TOKEN = config.auth.adminToken;
 
 app.use(express.json({ limit: '8mb' })); // room for base64 product images
+
+app.get('/recaptcha-config.js', (req, res) => {
+  res.type('application/javascript').send(`window.FUDGIO_ADMIN=${JSON.stringify({ recaptcha: recaptchaClientConfig() })};`);
+});
+
 app.use(express.static(path.join(config.root, 'admin')));
 
 // Login validates the admin password — must be BEFORE the guard.
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
+  const recaptcha = await verifyRecaptcha({ token: req.body?.recaptchaToken, expectedAction: 'ADMIN_LOGIN', req });
+  if (!recaptcha.ok) return res.status(recaptcha.status || 403).json({ error: recaptcha.error });
   if ((req.body && req.body.token) === ADMIN_TOKEN) return res.json({ ok: true });
   res.status(401).json({ error: 'Wrong password.' });
 });

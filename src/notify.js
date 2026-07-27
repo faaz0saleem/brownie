@@ -58,6 +58,26 @@ function orderHtml(order) {
   </div>`;
 }
 
+function contactText(message) {
+  return `New Fudgio contact message
+
+Name:    ${message.name}
+Email:   ${message.email}
+
+Message:
+${message.body}`;
+}
+
+function contactHtml(message) {
+  return `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #eee;border-radius:12px;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#d98e4a,#ff6f91);color:#26130b;padding:18px 22px">
+      <h2 style="margin:0">✉️ New contact message</h2>
+      <div style="font-weight:700">${message.name} · ${message.email}</div>
+    </div>
+    <div style="padding:22px;white-space:pre-wrap">${message.body}</div>
+  </div>`;
+}
+
 // Fire-and-forget: called after an order is created. Never throws.
 export async function orderPlaced(order) {
   const tasks = [];
@@ -90,4 +110,26 @@ export async function orderPlaced(order) {
     console.log(`🔔 New order ${order.id} (${money(order.total)}) — configure SMTP_* or ORDER_WEBHOOK_URL to get alerts.`);
   }
   await Promise.allSettled(tasks);
+}
+
+export async function contactReceived(message) {
+  const t = getTransporter();
+  if (!t) {
+    console.log(`✉️ Contact message from ${message.email} — configure SMTP_* to receive it by email.`);
+    return;
+  }
+
+  try {
+    await t.sendMail({
+      from: `"Fudgio Contact" <${config.notify.from}>`,
+      to: config.notify.to,
+      replyTo: message.email,
+      subject: `✉️ Contact form: ${message.name}`,
+      text: contactText(message),
+      html: contactHtml(message)
+    });
+    console.log(`📧 Contact email sent for ${message.email}`);
+  } catch (error) {
+    console.error('Contact email failed:', error.message);
+  }
 }

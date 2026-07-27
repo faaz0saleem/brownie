@@ -12,7 +12,14 @@
     const orderId = document.getElementById('trackId').value.trim();
     const phone = document.getElementById('trackPhone').value.trim();
     if (!orderId || !phone) { err.textContent = 'Enter your order number and phone.'; return; }
-    const res = await fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId, phone }) });
+    let recaptchaToken;
+    try {
+      recaptchaToken = await window.getRecaptchaToken('TRACK_ORDER');
+    } catch (error) {
+      err.textContent = error.message;
+      return;
+    }
+    const res = await fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId, phone, recaptchaToken }) });
     const o = await res.json();
     if (!res.ok) { err.textContent = o.error || 'Not found.'; return; }
     const idx = STEPS.indexOf(o.status);

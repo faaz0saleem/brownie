@@ -3,6 +3,43 @@ let CUR = 'Rs';
 const RS = (n) => CUR + ' ' + Number(n).toLocaleString('en-US');
 let TOKEN = localStorage.getItem('fud_admin_token') || '';
 let STATUSES = ['Pending', 'Confirmed', 'Baking', 'Out for Delivery', 'Delivered', 'Cancelled'];
+const ADMIN_RECAPTCHA = (window.FUDGIO_ADMIN && window.FUDGIO_ADMIN.recaptcha) || { enabled: false, siteKey: '' };
+let recaptchaScriptPromise = null;
+
+function loadRecaptchaScript() {
+  if (!ADMIN_RECAPTCHA.enabled) return Promise.resolve();
+  if (window.grecaptcha && window.grecaptcha.enterprise) return Promise.resolve();
+  if (recaptchaScriptPromise) return recaptchaScriptPromise;
+
+  recaptchaScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(ADMIN_RECAPTCHA.siteKey);
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Security verification could not be loaded.'));
+    document.head.appendChild(script);
+  });
+  return recaptchaScriptPromise;
+}
+
+async function getAdminRecaptchaToken(action) {
+  if (!ADMIN_RECAPTCHA.enabled) return null;
+  await loadRecaptchaScript();
+  if (!window.grecaptcha || !window.grecaptcha.enterprise) {
+    throw new Error('Security verification is still loading. Please try again.');
+  }
+
+  return new Promise((resolve, reject) => {
+    window.grecaptcha.enterprise.ready(async () => {
+      try {
+        const token = await window.grecaptcha.enterprise.execute(ADMIN_RECAPTCHA.siteKey, { action });
+        resolve(token);
+      } catch {
+        reject(new Error('Security verification failed. Please try again.'));
+      }
+    });
+  });
+}
 
 // If we're on the admin subdomain, call the main domain's API (same PHP backend).
 var API_BASE = (location.hostname.indexOf('admin.') === 0)
@@ -30,10 +67,11 @@ async function login() {
   const token = document.getElementById('loginToken').value.trim();
   err.textContent = '';
   try {
-    const res = await fetch(API_BASE + '/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+    const recaptchaToken = await getAdminRecaptchaToken('ADMIN_LOGIN');
+    const res = await fetch(API_BASE + '/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, recaptchaToken }) });
     if (!res.ok) { err.textContent = 'Wrong password. Try again.'; return; }
     TOKEN = token; localStorage.setItem('fud_admin_token', token); showApp();
-  } catch (e) { err.textContent = 'Network error.'; }
+  } catch (e) { err.textContent = e.message || 'Network error.'; }
 }
 function logout() {
   localStorage.removeItem('fud_admin_token'); TOKEN = '';

@@ -12,12 +12,14 @@ import * as pages from './pages.js';
 import {
   listProducts, getProduct, createOrder, getOrder, listOrders
 } from './service.js';
+import { contactReceived } from './notify.js';
 import {
   attachUser, issueSession, clearSession, publicUser,
   registerWithEmail, loginWithEmail,
   googleAuthUrl, googleExchange, upsertGoogleUser, makeState, _sign, _unsign
 } from './auth.js';
 import { store } from './data/index.js';
+import { verifyRecaptcha } from './recaptcha.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,6 +32,14 @@ app.use(express.static(path.join(config.root, 'public'), { extensions: [] }));
 
 const send = (res, html, status = 200) => res.status(status).type('html').send(html);
 const canonical = (p) => `${B.siteUrl}${p}`;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+async function requireRecaptcha(req, res, expectedAction) {
+  const result = await verifyRecaptcha({ token: req.body?.recaptchaToken, expectedAction, req });
+  if (result.ok) return true;
+  res.status(result.status || 403).json({ error: result.error });
+  return false;
+}
 
 // ---------------- SEO pages ----------------
 app.get('/', async (req, res) => {
@@ -104,6 +114,7 @@ app.get('/api/products/:slug', async (req, res) => {
 });
 
 app.post('/api/orders', async (req, res) => {
+  if (!(await requireRecaptcha(req, res, 'CHECKOUT'))) return;
   const { items, customer } = req.body || {};
   const cust = { ...customer };
   if (req.user && !cust.email) cust.email = req.user.email;
@@ -121,6 +132,7 @@ app.get('/api/my/orders', async (req, res) => {
 
 // Track by order id + phone (public, no login).
 app.post('/api/track', async (req, res) => {
+  if (!(await requireRecaptcha(req, res, 'TRACK_ORDER'))) return;
   const { orderId, phone } = req.body || {};
   const order = await getOrder((orderId || '').trim());
   if (!order || order.customer.phone.replace(/\D/g, '') !== (phone || '').replace(/\D/g, '')) {
@@ -129,8 +141,26 @@ app.post('/api/track', async (req, res) => {
   res.json(order);
 });
 
+app.post('/api/contact', async (req, res) => {
+  if (!(await requireRecaptcha(req, res, 'CONTACT'))) return;
+  const name = String(req.body?.name || '').trim();
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const body = String(req.body?.body || '').trim();
+
+  if (!name || !email || !body) {
+    return res.status(400).json({ error: 'Please fill in all fields.' });
+  }
+  if (!emailPattern.test(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  contactReceived({ name, email, body }).catch(() => {});
+  res.status(202).json({ ok: true, message: 'Thanks! Your message has been received.' });
+});
+
 // ---------------- Auth API ----------------
 app.post('/api/auth/register', async (req, res) => {
+  if (!(await requireRecaptcha(req, res, 'REGISTER'))) return;
   const { name, email, password, phone } = req.body || {};
   const result = await registerWithEmail({ name, email, password, phone });
   if (result.error) return res.status(400).json({ error: result.error });
@@ -139,6 +169,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
+  if (!(await requireRecaptcha(req, res, 'LOGIN'))) return;
   const { email, password } = req.body || {};
   const result = await loginWithEmail({ email, password });
   if (result.error) return res.status(400).json({ error: result.error });

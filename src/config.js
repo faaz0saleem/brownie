@@ -77,6 +77,12 @@ export const config = {
     // relay, Zapier/Make, n8n, Slack, Discord, etc.
     webhookUrl: env.ORDER_WEBHOOK_URL || ''
   },
+  recaptcha: {
+    siteKey: env.RECAPTCHA_SITE_KEY || '6Le46WctAAAAABH4t6WKQyiL8jy0YximSYWsRzV5',
+    projectId: env.RECAPTCHA_PROJECT_ID || '',
+    apiKey: env.RECAPTCHA_API_KEY || '',
+    minimumScore: Number.parseFloat(env.RECAPTCHA_MIN_SCORE || '0.5')
+  },
   auth: {
     // Secret used to sign session cookies. MUST be set in production.
     cookieSecret: env.COOKIE_SECRET || 'dev-insecure-secret-change-me',

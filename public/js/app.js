@@ -3,6 +3,28 @@ const CUR = (window.FUDGIO && window.FUDGIO.currency) || 'Rs';
 const FREE_OVER = (window.FUDGIO && window.FUDGIO.freeDeliveryOver) || 2500;
 const DELIVERY = (window.FUDGIO && window.FUDGIO.deliveryFee) || 150;
 const money = (n) => CUR + ' ' + Number(n).toLocaleString('en-US');
+const RECAPTCHA = (window.FUDGIO && window.FUDGIO.recaptcha) || { enabled: false, siteKey: '' };
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+async function getRecaptchaToken(action) {
+  if (!RECAPTCHA.enabled) return null;
+  if (!window.grecaptcha || !window.grecaptcha.enterprise) {
+    throw new Error('Security verification is still loading. Please try again.');
+  }
+
+  return new Promise((resolve, reject) => {
+    window.grecaptcha.enterprise.ready(async () => {
+      try {
+        const token = await window.grecaptcha.enterprise.execute(RECAPTCHA.siteKey, { action });
+        resolve(token);
+      } catch {
+        reject(new Error('Security verification failed. Please try again.'));
+      }
+    });
+  });
+}
+
+window.getRecaptchaToken = getRecaptchaToken;
 
 // ---------- cart ----------
 function getCart() { try { return JSON.parse(localStorage.getItem('fud_cart') || '[]'); } catch { return []; } }
@@ -117,7 +139,8 @@ async function placeOrder() {
   err.textContent = ''; btn.disabled = true; btn.textContent = 'Placing order…';
   const items = getCart().map((i) => ({ productId: i.productId, size: i.size, qty: i.qty }));
   try {
-    const res = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items, customer }) });
+    const recaptchaToken = await getRecaptchaToken('CHECKOUT');
+    const res = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items, customer, recaptchaToken }) });
     const data = await res.json();
     if (!res.ok) { err.textContent = data.error || 'Something went wrong.'; btn.disabled = false; btn.textContent = 'Place Order (COD) 🍫'; return; }
     localStorage.removeItem('fud_cart'); updateCartCount();
@@ -152,13 +175,34 @@ async function loadUser() {
 }
 
 // ---------- contact (client-side acknowledgement) ----------
-function submitContact() {
+async function submitContact() {
   const name = val('cfName'), email = val('cfEmail'), body = val('cfBody');
   const msg = document.getElementById('contactMsg');
   if (!name || !email || !body) { msg.style.color = 'var(--bad)'; msg.textContent = 'Please fill in all fields.'; return; }
-  msg.style.color = 'var(--ok)';
-  msg.textContent = 'Thanks! Your message has been noted — we\'ll reply by email shortly.';
-  document.getElementById('cfName').value = ''; document.getElementById('cfEmail').value = ''; document.getElementById('cfBody').value = '';
+  if (!EMAIL_RE.test(email)) { msg.style.color = 'var(--bad)'; msg.textContent = 'Please enter a valid email address.'; return; }
+
+  msg.style.color = 'inherit';
+  msg.textContent = 'Sending…';
+  try {
+    const recaptchaToken = await getRecaptchaToken('CONTACT');
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, body, recaptchaToken })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msg.style.color = 'var(--bad)';
+      msg.textContent = data.error || 'Something went wrong. Please try again.';
+      return;
+    }
+    msg.style.color = 'var(--ok)';
+    msg.textContent = data.message || 'Thanks! Your message has been received.';
+    document.getElementById('cfName').value = ''; document.getElementById('cfEmail').value = ''; document.getElementById('cfBody').value = '';
+  } catch (error) {
+    msg.style.color = 'var(--bad)';
+    msg.textContent = error.message || 'Something went wrong. Please try again.';
+  }
 }
 
 document.addEventListener('click', (e) => { if (e.target.id === 'checkoutModal') closeCheckout(); });

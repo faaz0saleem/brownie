@@ -16,7 +16,14 @@
   window.doLogin = async function () {
     err('');
     const body = { email: v('liEmail'), password: v('liPass') };
-    const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let recaptchaToken;
+    try {
+      recaptchaToken = await window.getRecaptchaToken('LOGIN');
+    } catch (error) {
+      err(error.message);
+      return;
+    }
+    const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, recaptchaToken }) });
     const data = await res.json();
     if (!res.ok) return err(data.error);
     renderProfile(data.user);
@@ -24,7 +31,14 @@
   window.doRegister = async function () {
     err('');
     const body = { name: v('rgName'), email: v('rgEmail'), phone: v('rgPhone'), password: v('rgPass') };
-    const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let recaptchaToken;
+    try {
+      recaptchaToken = await window.getRecaptchaToken('REGISTER');
+    } catch (error) {
+      err(error.message);
+      return;
+    }
+    const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, recaptchaToken }) });
     const data = await res.json();
     if (!res.ok) return err(data.error);
     renderProfile(data.user);
