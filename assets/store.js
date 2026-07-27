@@ -97,3 +97,41 @@ var FUDGIO_SLOGAN = 'Life is short. Eat the brownie. 🍫 Handcrafted brownies, 
     }catch(e){}
   });
 })();
+
+/* ---- Scroll reveal ---- */
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){
+    var targets=document.querySelectorAll('.section-head,.card,.feature,.step,.quote,.cta-band,.panel,.hero-art');
+    if(!('IntersectionObserver' in window)){ targets.forEach(function(t){t.classList.add('in');}); return; }
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+    },{rootMargin:'0px 0px -60px 0px',threshold:.06});
+    targets.forEach(function(t,i){
+      t.classList.add('reveal');
+      t.style.transitionDelay=Math.min(i%4*70,210)+'ms';
+      io.observe(t);
+    });
+  });
+})();
+
+/* ---- Quick-add straight from a product card ---- */
+function quickAdd(ev, slug){
+  ev.preventDefault(); ev.stopPropagation();
+  var p=getProduct(slug); if(!p) return;
+  var s=p.sizes[0];
+  addToCart(p, s.label, s.price, 1);
+}
+
+/* ---- Render a product card (shared by home & menu) ---- */
+function productCardHTML(p){
+  return '<a class="card" href="/product?b='+p.slug+'">'
+    +'<div class="card-art" style="background:'+p.gradient+'">'
+    +(p.featured?'<span class="fav">★ Signature</span>':'')
+    +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
+    +'<span>'+p.emoji+'</span>'
+    +'<button class="quick-add" onclick="quickAdd(event,\''+p.slug+'\')">+ Quick add</button>'
+    +'</div>'
+    +'<div class="card-body"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div>'
+    +'<div class="card-foot"><div class="price">from '+money(fromPrice(p))+'</div><span class="card-btn">Choose →</span></div></div></a>';
+}

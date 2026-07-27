@@ -36,15 +36,7 @@
 <script src="/assets/store.js"></script>
 <script>
 document.getElementById('yr').textContent=new Date().getFullYear();
-document.getElementById('grid').innerHTML = PRODUCTS.map(function(p){
-  return '<a class="card" href="/product?b='+p.slug+'">'
-    +'<div class="card-art" style="background:'+p.gradient+'">'
-    +(p.featured?'<span class="fav">★ Signature</span>':'')
-    +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
-    +'<span>'+p.emoji+'</span></div>'
-    +'<div class="card-body"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div>'
-    +'<div class="card-foot"><div class="price">from '+money(fromPrice(p))+'</div><span class="card-btn">Choose →</span></div></div></a>';
-}).join('');
+document.getElementById('grid').innerHTML = PRODUCTS.map(productCardHTML).join('');
 updateCount();
 </script>
 </body>

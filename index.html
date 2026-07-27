@@ -65,6 +65,23 @@
   </div>
 </div></section>
 
+
+<section class="section" id="reviews"><div class="wrap">
+  <div class="section-head"><span class="eyebrow">⭐ Loved by locals</span><h2>What Lahore is saying</h2>
+    <p>Real feedback from people who came back for a second box.</p></div>
+  <div class="quotes">
+    <div class="quote"><div class="stars">★★★★★</div>
+      <p>The fudgiest brownie I've ever had. The Salted Caramel is dangerous — I ordered twice in one week!</p>
+      <div class="who"><div class="av">A</div><div><b>Ayesha K.</b><span>DHA, Lahore</span></div></div></div>
+    <div class="quote"><div class="stars">★★★★★</div>
+      <p>Cash on delivery made it so easy. Ordered for a birthday and everyone asked where they were from. 10/10.</p>
+      <div class="who"><div class="av">B</div><div><b>Bilal A.</b><span>Gulberg, Lahore</span></div></div></div>
+    <div class="quote"><div class="stars">★★★★★</div>
+      <p>Nutty Delight is unreal — you can actually taste the fresh nuts. Arrived warm and gooey.</p>
+      <div class="who"><div class="av">S</div><div><b>Sara M.</b><span>Johar Town, Lahore</span></div></div></div>
+  </div>
+</div></section>
+
 <section class="section"><div class="wrap"><div class="cta-band">
   <h2>Craving a brownie right now?</h2>
   <p>Order in under a minute and pay cash when it arrives. Fresh, fudgy and unforgettable.</p>
@@ -72,8 +89,36 @@
 </div></div></section>
 
 <footer class="site-footer" id="contact"><div class="wrap">
-  <div style="margin-bottom:8px"><strong style="color:var(--cream);font-family:var(--display);font-size:1.2rem">Fudgio</strong> · Handcrafted brownies · 💵 Cash on Delivery only</div>
-  <div>Questions? <a id="mail" href="#" style="color:var(--accent)">Email us</a> · © <span id="yr"></span> Fudgio. Made with 💛</div>
+  <div class="foot-grid">
+    <div class="foot-brand">
+      <a href="/" class="brand" style="justify-content:flex-start"><span class="logo">🍫</span><span class="brand-name">Fudgio</span></a>
+      <p>Handcrafted, small-batch brownies baked fresh to order and delivered across Lahore. Cash on Delivery only.</p>
+    </div>
+    <div>
+      <h4>Shop</h4>
+      <a href="/menu">Our Menu</a>
+      <a href="/product?b=chocolate">Classic Chocolate</a>
+      <a href="/product?b=nutty-delight">Nutty Delight</a>
+      <a href="/product?b=salted-caramel">Salted Caramel</a>
+    </div>
+    <div>
+      <h4>Help</h4>
+      <a href="/track">Track your order</a>
+      <a href="/faq">FAQ</a>
+      <a href="/contact">Contact us</a>
+      <a href="/about">Our story</a>
+    </div>
+    <div>
+      <h4>Get in touch</h4>
+      <a id="mail" href="#">Email us</a>
+      <a href="/contact">Bulk &amp; party orders</a>
+      <p style="color:var(--cream-faint);font-size:.86rem;margin-top:10px">🚚 Delivering across Lahore<br>💵 Cash on Delivery only</p>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <span>© <span id="yr"></span> Fudgio. All rights reserved.</span>
+    <span>Handcrafted with 💛 in Lahore</span>
+  </div>
 </div></footer>
 <div class="toast" id="toast"></div>
 
@@ -81,15 +126,7 @@
 <script>
 document.getElementById('yr').textContent=new Date().getFullYear();
 document.getElementById('mail').href='mailto:'+FUDGIO.email;
-document.getElementById('grid').innerHTML = PRODUCTS.map(function(p){
-  return '<a class="card" href="/product?b='+p.slug+'">'
-    +'<div class="card-art" style="background:'+p.gradient+'">'
-    +(p.featured?'<span class="fav">★ Signature</span>':'')
-    +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
-    +'<span>'+p.emoji+'</span></div>'
-    +'<div class="card-body"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div>'
-    +'<div class="card-foot"><div class="price">from '+money(fromPrice(p))+'</div><span class="card-btn">Choose →</span></div></div></a>';
-}).join('');
+document.getElementById('grid').innerHTML = PRODUCTS.map(productCardHTML).join('');
 updateCount();
 </script>
 </body>

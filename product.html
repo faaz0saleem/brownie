@@ -64,6 +64,18 @@ else {
   document.getElementById('qp').onclick=function(){ state.qty=Math.min(20,state.qty+1); sync(); };
   document.getElementById('add').onclick=function(){ addToCart(p,state.size,state.price,state.qty); };
   document.getElementById('buy').onclick=function(){ addToCart(p,state.size,state.price,state.qty); location.href='/checkout'; };
+
+  // Sticky buy bar for mobile
+  var bb=document.createElement('div');
+  bb.className='buy-bar';
+  bb.innerHTML='<span class="bb-price" id="bbPrice">'+money(p.sizes[0].price)+'</span>'
+    +'<button class="btn btn-ghost" id="bbAdd">Add</button>'
+    +'<button class="btn btn-primary" id="bbBuy">⚡ Buy now</button>';
+  document.body.appendChild(bb);
+  document.getElementById('bbAdd').onclick=function(){ addToCart(p,state.size,state.price,state.qty); };
+  document.getElementById('bbBuy').onclick=function(){ addToCart(p,state.size,state.price,state.qty); location.href='/checkout'; };
+  var _sync=sync;
+  sync=function(){ _sync(); var e=document.getElementById('bbPrice'); if(e) e.textContent=money(state.price*state.qty); };
 }
 updateCount();
 </script>
