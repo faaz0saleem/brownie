@@ -39,7 +39,7 @@ export const config = {
     domain: env.SITE_DOMAIN || 'fudgio.com',
     adminDomain: env.ADMIN_DOMAIN || 'admin.fudgio.com',
     siteUrl: env.SITE_URL || 'https://fudgio.com',
-    email: env.CONTACT_EMAIL || 'hello@fudgio.com',
+    email: env.CONTACT_EMAIL || 'faaz.saleem@fudgio.com',
     phone: env.CONTACT_PHONE || '+92 300 0000000',
     address: env.CONTACT_ADDRESS || 'Karachi, Pakistan',
     instagram: env.BRAND_INSTAGRAM || 'https://instagram.com/fudgio',
@@ -71,8 +71,8 @@ export const config = {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS
     },
-    from: env.SMTP_FROM || env.CONTACT_EMAIL || 'orders@fudgio.com',
-    to: env.ORDER_NOTIFY_TO || env.CONTACT_EMAIL || 'hello@fudgio.com',
+    from: env.SMTP_FROM || env.CONTACT_EMAIL || 'faaz.saleem@fudgio.com',
+    to: env.ORDER_NOTIFY_TO || env.CONTACT_EMAIL || 'faaz.saleem@fudgio.com',
     // Optional generic webhook (POST order JSON) — point at a WhatsApp Cloud API
     // relay, Zapier/Make, n8n, Slack, Discord, etc.
     webhookUrl: env.ORDER_WEBHOOK_URL || ''
