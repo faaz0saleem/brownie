@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FAQ · Fudgio</title>
+<meta name="description" content="Answers about delivery, Cash on Delivery, allergens and ordering from Fudgio."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/store.css"/>
+<style>
+.faq{max-width:760px}
+.faq details{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.faq summary{padding:16px 18px;font-weight:700;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:'+';font-size:1.4rem;color:var(--accent)}
+.faq details[open] summary::after{content:'−'}
+.faq .a{padding:0 18px 16px;color:var(--cream-dim)}
+</style>
+</head>
+<body>
+<header class="site-header"><div class="wrap nav">
+  <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/about">About</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></nav>
+  <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+</div></header>
+
+<main class="page"><div class="wrap">
+  <div class="crumbs"><a href="/">Home</a> ›<span class="on">FAQ</span></div>
+  <span class="eyebrow">❓ FAQ</span>
+  <h1>Frequently asked questions</h1>
+  <div class="faq" style="margin-top:20px">
+    <details open><summary>Do you only accept Cash on Delivery?</summary><div class="a">Yes. Fudgio accepts <strong>Cash on Delivery (COD) only</strong>. You pay in cash when your order is delivered — there are no online or card payments.</div></details>
+    <details><summary>How do I track my order?</summary><div class="a">When you place an order you get a <strong>tracking number</strong> (like FUD-1001). Enter it with your phone number on the <a href="/track" style="color:var(--accent)">Track your order</a> page to see the status.</div></details>
+    <details><summary>Do your brownies contain nuts?</summary><div class="a">Our <strong>Nutty Delight</strong> contains walnuts and hazelnuts. If you have a nut allergy, please avoid it. All our brownies are made in a kitchen that also handles nuts, so traces may be present.</div></details>
+    <details><summary>Is delivery free?</summary><div class="a">Delivery is free on orders over Rs 2,500. Below that, a small delivery fee applies. You'll see the exact total before you confirm.</div></details>
+    <details><summary>How fresh are the brownies?</summary><div class="a">We bake to order in small batches, so your brownies are as fresh as possible — usually baked the same day they're delivered.</div></details>
+    <details><summary>What's your secret recipe?</summary><div class="a">That stays in the kitchen 😉. Our recipe is special and small-batch — it's what makes a Fudgio brownie a Fudgio brownie.</div></details>
+  </div>
+</div></main>
+
+<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<div class="toast" id="toast"></div>
+<script src="/assets/store.js"></script>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();updateCount();</script>
+</body>
+</html>

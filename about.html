@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>About · Fudgio — Our Story</title>
+<meta name="description" content="The Fudgio story — handcrafted brownies from a secret small-batch recipe, delivered fresh with Cash on Delivery."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/store.css"/>
+<style>.prose{max-width:760px}.prose h2{font-family:var(--display);font-size:1.5rem;margin:26px 0 10px}.prose p,.prose li{color:var(--cream-dim);margin-bottom:12px}.prose ul{padding-left:22px}</style>
+</head>
+<body>
+<header class="site-header"><div class="wrap nav">
+  <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/about">About</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></nav>
+  <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+</div></header>
+
+<main class="page"><div class="wrap">
+  <div class="crumbs"><a href="/">Home</a> ›<span class="on">About</span></div>
+  <span class="eyebrow">📖 Our Story</span>
+  <h1>From our oven, with love</h1>
+  <div class="prose" style="margin-top:18px">
+    <p>Fudgio started in a tiny home kitchen with one goal: the fudgiest brownie in town. Today we still bake every batch by hand — because you can taste the difference.</p>
+    <h2>A secret recipe, perfected</h2>
+    <p>Every Fudgio brownie is baked in small batches from our special, closely-guarded recipe. No preservatives, no factory lines — just premium chocolate, real butter, and a lot of patience. The result is a crackly top and an unbelievably gooey centre.</p>
+    <h2>Three flavours we're proud of</h2>
+    <ul>
+      <li><strong>Classic Chocolate</strong> — deep, dark and endlessly fudgy.</li>
+      <li><strong>Nutty Delight</strong> — loaded with toasted nuts <em>(contains nuts — not for those with a nut allergy)</em>.</li>
+      <li><strong>Salted Caramel</strong> — sweet, salty and swirled with golden caramel.</li>
+    </ul>
+    <h2>Why Cash on Delivery?</h2>
+    <p>We believe ordering dessert should be simple and trustworthy. That's why we offer <strong>Cash on Delivery only</strong> — you pay in cash when your fresh brownies arrive. No cards, no online payments, no worries.</p>
+    <div style="margin-top:26px"><a href="/menu" class="btn btn-primary">🍫 Explore the menu</a></div>
+  </div>
+</div></main>
+
+<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<div class="toast" id="toast"></div>
+<script src="/assets/store.js"></script>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();updateCount();</script>
+</body>
+</html>

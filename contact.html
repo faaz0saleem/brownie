@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Contact · Fudgio</title>
+<meta name="description" content="Contact Fudgio for orders, bulk requests and feedback. Cash on Delivery only."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AB%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/store.css"/>
+<style>.cgrid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.ci{display:flex;gap:14px;margin-bottom:18px}.ci .i{font-size:1.5rem}.ci b{display:block}.ci span{color:var(--cream-dim);font-size:.92rem}@media(max-width:820px){.cgrid{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header class="site-header"><div class="wrap nav">
+  <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/about">About</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></nav>
+  <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
+</div></header>
+
+<main class="page"><div class="wrap">
+  <div class="crumbs"><a href="/">Home</a> ›<span class="on">Contact</span></div>
+  <span class="eyebrow">✉️ Contact</span>
+  <h1>Get in touch</h1>
+  <div class="sub">Questions, bulk orders or feedback? We'd love to hear from you.</div>
+  <div class="cgrid">
+    <div>
+      <div class="ci"><div class="i">📧</div><div><b>Email</b><span><a id="mail" href="#">loading…</a></span></div></div>
+      <div class="ci"><div class="i">📞</div><div><b>Phone / WhatsApp</b><span id="phone">—</span></div></div>
+      <div class="ci"><div class="i">📍</div><div><b>Location</b><span>Karachi, Pakistan</span></div></div>
+      <div class="ci"><div class="i">💵</div><div><b>Payment</b><span>Cash on Delivery only</span></div></div>
+      <div class="ci"><div class="i">📦</div><div><b>Track an order</b><span><a href="/track" style="color:var(--accent)">Track your order →</a></span></div></div>
+    </div>
+    <div class="panel">
+      <h3>Send us a message</h3>
+      <div class="err" id="msg"></div>
+      <div class="fg"><label>Your name</label><input id="cName" placeholder="Your name"/></div>
+      <div class="fg"><label>Email</label><input id="cEmail" type="email" placeholder="you@email.com"/></div>
+      <div class="fg"><label>Message</label><textarea id="cBody" rows="4" placeholder="How can we help?"></textarea></div>
+      <button class="btn btn-primary btn-block" onclick="sendMsg()">Send message</button>
+    </div>
+  </div>
+</div></main>
+
+<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<div class="toast" id="toast"></div>
+<script src="/assets/store.js"></script>
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+document.getElementById('mail').textContent=FUDGIO.email; document.getElementById('mail').href='mailto:'+FUDGIO.email;
+updateCount();
+function sendMsg(){
+  var v=function(id){return (document.getElementById(id).value||'').trim();};
+  var n=v('cName'),e=v('cEmail'),b=v('cBody'),msg=document.getElementById('msg');
+  if(!n||!e||!b){ msg.style.color='var(--bad)'; msg.textContent='Please fill in all fields.'; return; }
+  if(!validEmail(e)){ msg.style.color='var(--bad)'; msg.textContent='Please enter a valid email.'; return; }
+  window.location.href='mailto:'+FUDGIO.email+'?subject='+encodeURIComponent('Fudgio enquiry from '+n)+'&body='+encodeURIComponent(b+'\n\nFrom: '+n+' ('+e+')');
+  msg.style.color='var(--ok)'; msg.textContent='Opening your email app…';
+}
+</script>
+</body>
+</html>
