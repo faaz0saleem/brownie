@@ -141,7 +141,11 @@ function schema_for(string $file): array {
   if ($file === 'index.html') {
     return [
       $org,
-      ['@type' => 'WebSite', '@id' => SITE . '/#website', 'url' => SITE, 'name' => BRAND,
+      // Google reads this to decide what to print above the result instead of
+      // the bare domain. It must sit on the home page and agree with
+      // og:site_name and the <title>.
+      ['@type' => 'WebSite', '@id' => SITE . '/#website', 'url' => SITE,
+       'name' => BRAND, 'alternateName' => ['Fudgio Brownies', 'Fudgio Lahore'],
        'publisher' => ['@id' => SITE . '/#business'], 'inLanguage' => 'en'],
     ];
   }

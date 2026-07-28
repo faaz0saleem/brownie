@@ -31,11 +31,15 @@ foreach (['png', 'jpg', 'jpeg', 'webp'] as $ext) {
   $try = "$root/assets/logo-source.$ext";
   if (is_file($try)) { $source = $try; break; }
 }
+if (!$source && is_file("$root/assets/icon-512.png")) {
+  // No brand logo supplied yet — build from the icon already in the repo so the
+  // site always has a valid favicon.ico for Google. Drop assets/logo-source.png
+  // in and re-run to replace the whole set with the real logo.
+  $source = "$root/assets/icon-512.png";
+  fwrite(STDERR, "note: no assets/logo-source.* found, using the existing icon-512.png\n");
+}
 if (!$source) {
-  fwrite(STDERR,
-    "No source logo found.\n\n" .
-    "Save the logo as assets/logo-source.png (or .jpg/.jpeg/.webp) and run this again.\n" .
-    "Square works best; anything else is centre-cropped to a square first.\n");
+  fwrite(STDERR, "No source image. Save the logo as assets/logo-source.png and run again.\n");
   exit(1);
 }
 
@@ -56,6 +60,9 @@ imagecopyresampled($sq, $src, 0, 0, (int)(($sw - $side) / 2), (int)(($sh - $side
 /** The logo's own background colour, sampled from a corner — used behind the
  *  Apple icon so it never renders on black. */
 $bg = imagecolorsforindex($sq, imagecolorat($sq, 2, 2));
+// A transparent corner samples as black, which would put the Apple icon and the
+// manifest on a black field. Fall back to the brand cream in that case.
+if ($bg['alpha'] > 60) $bg = ['red' => 255, 'green' => 250, 'blue' => 243, 'alpha' => 0];
 
 /** Scale to $size, then keep only what falls inside a circle. */
 function circle_icon($sq, int $size) {
@@ -104,7 +111,10 @@ foreach ([16, 32, 48, 96, 192, 512] as $size) {
   $made[] = "favicon-$size.png";
 }
 copy("$root/assets/favicon-32.png", "$root/assets/favicon.png");
-copy("$root/assets/favicon-512.png", "$root/assets/icon-512.png");
+// Never clobber the file we read from, or repeat runs would crop it again.
+if (realpath($source) !== realpath("$root/assets/icon-512.png")) {
+  copy("$root/assets/favicon-512.png", "$root/assets/icon-512.png");
+}
 
 $apple = square_icon($sq, 180, $bg);
 imagepng($apple, "$root/assets/apple-touch-icon.png", 9);
