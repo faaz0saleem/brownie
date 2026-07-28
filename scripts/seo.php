@@ -236,6 +236,27 @@ function head_block(string $file, array $meta): string {
   $out .= '<meta name="robots" content="' . $robots . "\"/>\n";
   $out .= "<meta name=\"author\" content=\"" . BRAND . "\"/>\n";
   $out .= "<meta name=\"geo.placename\" content=\"Lahore, Pakistan\"/>\n";
+  // Icons. Reference only what exists: scripts/icons.php generates the sized
+  // set from assets/logo-source.*, and until that is added we keep pointing at
+  // the icons already in the repo rather than emitting links that 404.
+  // favicon.ico sits at the site root because that is where Google looks for
+  // the icon it shows beside a search result; it wants a square icon whose size
+  // is a multiple of 48, which is why 48/96/192 are generated.
+  $root = dirname(__DIR__);
+  if (is_file("$root/favicon.ico")) $out .= "<link rel=\"icon\" href=\"/favicon.ico\" sizes=\"32x32\"/>\n";
+  $any = false;
+  foreach ([48, 96, 192] as $px) {
+    if (!is_file("$root/assets/favicon-$px.png")) continue;
+    $out .= "<link rel=\"icon\" type=\"image/png\" sizes=\"{$px}x{$px}\" href=\"/assets/favicon-$px.png\"/>\n";
+    $any = true;
+  }
+  if (!$any) {
+    if (is_file("$root/assets/favicon.svg")) $out .= "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/assets/favicon.svg\"/>\n";
+    if (is_file("$root/assets/favicon.png")) $out .= "<link rel=\"icon\" type=\"image/png\" href=\"/assets/favicon.png\"/>\n";
+  }
+  if (is_file("$root/assets/apple-touch-icon.png")) $out .= "<link rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/assets/apple-touch-icon.png\"/>\n";
+  if (is_file("$root/site.webmanifest")) $out .= "<link rel=\"manifest\" href=\"/site.webmanifest\"/>\n";
+  $out .= "<meta name=\"theme-color\" content=\"#d98e4a\"/>\n";
   // Open Graph — controls how the link looks on WhatsApp, Facebook, LinkedIn.
   $out .= '<meta property="og:type" content="' . $type . "\"/>\n";
   $out .= '<meta property="og:site_name" content="' . BRAND . "\"/>\n";
@@ -275,8 +296,25 @@ foreach (pages() as $file => $meta) {
     $html = preg_replace('#\s*<title>.*?</title>#s', '', $html, 1);
     $html = preg_replace('#\s*<meta name="description"[^>]*>#i', '', $html, 1);
     $html = preg_replace('#\s*<meta name="robots"[^>]*>#i', '', $html, 1);
+    // Icons are managed here now — drop any hand-written ones so a stale
+    // favicon.svg can't outrank the generated set in the browser's preference.
+    $html = preg_replace('#\s*<link rel="(?:icon|alternate icon|apple-touch-icon|manifest)"[^>]*>#i', '', $html);
+    $html = preg_replace('#\s*<meta name="theme-color"[^>]*>#i', '', $html);
     $html = preg_replace('#(<meta charset="UTF-8"\s*/?>)#i', "$1\n" . addcslashes($block, '\\$'), $html, 1);
   }
+  // Anything this script owns must exist only inside the markers. Tags left
+  // over from before (a hand-written favicon.svg, an old og: tag) would other-
+  // wise sit alongside the generated ones and can win in the browser.
+  $parts = preg_split('#(<!--SEO-->.*?<!--/SEO-->)#s', $html, -1, PREG_SPLIT_DELIM_CAPTURE);
+  foreach ($parts as $i => $part) {
+    if (str_starts_with($part, '<!--SEO-->')) continue;      // leave ours alone
+    $part = preg_replace('#\s*<link rel="(?:icon|alternate icon|apple-touch-icon|manifest|canonical)"[^>]*>#i', '', $part);
+    $part = preg_replace('#\s*<meta name="theme-color"[^>]*>#i', '', $part);
+    $part = preg_replace('#\s*<meta (?:property="og:|name="twitter:)[^>]*>#i', '', $part);
+    $parts[$i] = $part;
+  }
+  $html = implode('', $parts);
+
   file_put_contents($path, $html);
   $done[] = $file;
 }

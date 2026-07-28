@@ -73,12 +73,21 @@ RewriteRule ^(wp-admin|wp-login|wp-content|wp-includes|xmlrpc\.php|phpmyadmin|\.
   <FilesMatch "\.(css|js|svg|png|jpg|jpeg|webp|woff2?)$">
     Header always set Cache-Control "public, max-age=31536000"
   </FilesMatch>
+  # Icons change rarely but must not be cached forever, or a logo change would
+  # take a year to reach returning visitors. Google re-crawls the favicon too.
+  <FilesMatch "\.(ico|webmanifest)$">
+    Header always set Cache-Control "public, max-age=604800"
+  </FilesMatch>
 </IfModule>
 
 # LiteSpeed (Hostinger) caches pages by default; keep HTML and the API live.
 <IfModule LiteSpeed>
   CacheDisable public /
 </IfModule>
+
+# --- Correct types for the icon files ---
+AddType image/x-icon .ico
+AddType application/manifest+json .webmanifest
 
 # --- Compression ---
 <IfModule mod_deflate.c>
