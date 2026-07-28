@@ -198,7 +198,7 @@ export function aboutPage() {
   <section class="page-hero"><div class="wrap">
     <span class="eyebrow">📖 Our Story</span>
     <h1>From our oven, with love</h1>
-    <p>Fudgio started in a tiny home kitchen with one goal: the fudgiest brownie in town.</p>
+    <p>Fudgio started with one goal: the fudgiest brownie in town.</p>
   </div></section>
   <section class="page"><div class="wrap prose">
     <div class="card-panel">

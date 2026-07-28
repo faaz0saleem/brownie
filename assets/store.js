@@ -2,19 +2,19 @@
 var FUDGIO = { whatsapp:'', email:'faaz.saleem@fudgio.com', currency:'Rs', freeOver:2500, deliveryFee:150, city:'Lahore' };
 
 var PRODUCTS = [
-  { id:'chocolate', slug:'chocolate', path:'/brownies/classic-chocolate', name:'Classic Chocolate', emoji:'🍫',
+  { id:'chocolate', slug:'chocolate', path:'/brownies/classic-chocolate', image:'/assets/brownie-chocolate.svg', name:'Classic Chocolate', emoji:'🍫',
     gradient:'linear-gradient(135deg,#5b3a29,#2b1a12)', featured:true, containsNuts:false,
     tagline:'The original, impossibly fudgy',
     desc:'Dense, gooey and deeply chocolatey with a crackly, paper-thin top. Made from our secret small-batch recipe using premium dark chocolate and real butter. The one everyone comes back for.',
     sizes:[{label:'Single brownie',price:190},{label:'Box of 6',price:900},{label:'Box of 9',price:1290},{label:'Box of 12',price:1650}],
     allergens:['Gluten (wheat)','Dairy','Eggs','Soy'] },
-  { id:'nutty-delight', slug:'nutty-delight', path:'/brownies/nutty-delight', name:'Nutty Delight', emoji:'🌰',
+  { id:'nutty-delight', slug:'nutty-delight', path:'/brownies/nutty-delight', image:'/assets/brownie-nutty.svg', name:'Nutty Delight', emoji:'🌰',
     gradient:'linear-gradient(135deg,#6d4c2f,#3a2417)', featured:true, containsNuts:true,
     tagline:'Loaded with toasted nuts',
     desc:'A rich chocolate brownie packed with roasted walnuts and hazelnuts for a satisfying crunch in every bite. Made from our secret small-batch recipe. For serious nut lovers.',
     sizes:[{label:'Single brownie',price:220},{label:'Box of 6',price:1050},{label:'Box of 9',price:1490},{label:'Box of 12',price:1920}],
     allergens:['Tree nuts (walnut, hazelnut)','Gluten (wheat)','Dairy','Eggs','Soy'] },
-  { id:'salted-caramel', slug:'salted-caramel', path:'/brownies/salted-caramel', name:'Salted Caramel', emoji:'🍯',
+  { id:'salted-caramel', slug:'salted-caramel', path:'/brownies/salted-caramel', image:'/assets/brownie-caramel.svg', name:'Salted Caramel', emoji:'🍯',
     gradient:'linear-gradient(135deg,#a06a34,#3b230f)', featured:true, containsNuts:false,
     tagline:'Sweet, salty, unforgettable',
     desc:'Ribbons of golden salted caramel swirled through a fudgy chocolate brownie and finished with a pinch of flaky sea salt. Made from our secret small-batch recipe. The perfect balance of sweet and salty.',
@@ -54,6 +54,8 @@ function loadLiveStock(done){
           if(r.active === false){ p.stock = 0; return; }        // hidden by the admin
           if(r.stock !== undefined && r.stock !== null && !isNaN(Number(r.stock))) p.stock = Number(r.stock);
           if(r.sizes && r.sizes.length) p.sizes = r.sizes;
+          // A real photo uploaded in the admin always beats the drawn default.
+          if(r.imageUrl) p.image = r.imageUrl;
         });
       }catch(e){}
       finish();
@@ -61,6 +63,15 @@ function loadLiveStock(done){
     x.onerror = finish; x.ontimeout = finish;
     x.send();
   }catch(e){ finish(); }
+}
+
+
+/* The art for a product: its photo if one has been uploaded, otherwise the
+   drawn brownie, otherwise the emoji. Images are decorative here — the name
+   sits next to them in text — so alt stays empty for screen readers. */
+function productArtHTML(p, cls){
+  if(p.image) return '<img class="'+(cls||'art-img')+'" src="'+p.image+'" alt="" loading="lazy" decoding="async"/>';
+  return '<span>'+p.emoji+'</span>';
 }
 
 function money(n){ return FUDGIO.currency + ' ' + Number(n).toLocaleString('en-US'); }
@@ -75,7 +86,7 @@ function addToCart(product, sizeLabel, price, qty){
   var cart=getCart(), key=product.id+'::'+(sizeLabel||'');
   var ex=cart.filter(function(i){return i.key===key;})[0];
   if(ex) ex.qty+=qty;
-  else cart.push({key:key,id:product.id,name:product.name,emoji:product.emoji,gradient:product.gradient,size:sizeLabel||'',price:price,qty:qty});
+  else cart.push({key:key,id:product.id,name:product.name,emoji:product.emoji,image:product.image||'',gradient:product.gradient,size:sizeLabel||'',price:price,qty:qty});
   saveCart(cart); toast(qty+' × '+product.name+' added 🎉');
 }
 var _tt;
@@ -171,7 +182,7 @@ function productCardHTML(p){
     +'<div class="card-art" style="background:'+p.gradient+'">'
     +(p.featured?'<span class="fav">★ Signature</span>':'')
     +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
-    +'<span>'+p.emoji+'</span>'
+    + productArtHTML(p)
     +(out?'<span class="sold-out-flag">Sold out</span>'
          :'<button class="quick-add" onclick="quickAdd(event,\''+p.slug+'\')">+ Quick add</button>')
     +'</div>'
@@ -199,7 +210,7 @@ function renderProductDetail(slug){
   var crumb=document.getElementById('crumbName'); if(crumb) crumb.textContent=p.name;
   var state={size:p.sizes[0].label,price:p.sizes[0].price,qty:1};
   var nut=p.containsNuts?'<div class="nut-warning">⚠️ <div><strong>Allergy warning:</strong> This brownie contains <strong>nuts</strong>. If you have a nut allergy, please do not eat it.</div></div>':'';
-  root.innerHTML='<div class="pd"><div class="pd-art" style="background:'+p.gradient+'">'+p.emoji+'</div>'
+  root.innerHTML='<div class="pd"><div class="pd-art" style="background:'+p.gradient+'">'+productArtHTML(p,'pd-img')+'</div>'
     +'<div class="pd-info"><h1>'+p.name+'</h1><div class="tagline">'+p.tagline+'</div><div class="desc">'+p.desc+'</div>'
     +'<div class="pd-price" id="price">from '+money(fromPrice(p))+'</div>'
     +'<div class="stock-note in">✅ In stock &amp; baked fresh to order</div>'

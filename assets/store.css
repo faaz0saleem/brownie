@@ -419,3 +419,19 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .line.is-sold-out .art{filter:grayscale(.6);opacity:.6}
 .sold-out-pill{display:inline-block;margin-left:8px;font-size:.68rem;font-weight:800;letter-spacing:1px;
   text-transform:uppercase;color:#b3261e;background:#fde7e5;border:1px solid #f3c2bd;border-radius:999px;padding:2px 9px;vertical-align:middle}
+
+/* ---- Product photography / artwork ----
+   The art frames already set their own size and rounding, so the image just
+   fills them. object-fit keeps a customer's phone photo from stretching. */
+.card-art .art-img,
+.pd-art .art-img,
+.pd-art .pd-img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;display:block;z-index:1;
+}
+.line .art .art-img{width:100%;height:100%;object-fit:cover;border-radius:12px;display:block}
+.card-art .art-img{transition:transform .45s cubic-bezier(.2,.9,.3,1.3)}
+.card:hover .card-art .art-img{transform:scale(1.06)}
+/* the decorative texture overlays sit above the emoji but must not veil a photo */
+.card-art:has(.art-img)::before,.card-art:has(.art-img)::after,
+.pd-art:has(.art-img)::before,.pd-art:has(.art-img)::after{opacity:.25}
