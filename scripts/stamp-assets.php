@@ -20,7 +20,7 @@ $version = substr(hash('sha256',
     file_get_contents("$root/assets/store.css") .
     file_get_contents("$root/assets/store.js")), 0, 8);
 
-$files = array_merge(glob("$root/*.html"), glob("$root/admin/*.html"));
+$files = array_merge(glob("$root/*.html"), glob("$root/*/*.html"));
 $changed = [];
 
 foreach ($files as $file) {

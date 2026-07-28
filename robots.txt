@@ -1,0 +1,13 @@
+# Fudgio — https://fudgio.com
+User-agent: *
+Allow: /
+
+# Nothing useful for search here
+Disallow: /cart
+Disallow: /checkout
+Disallow: /track
+Disallow: /product
+Disallow: /api/
+Disallow: /admin/
+
+Sitemap: https://fudgio.com/sitemap.xml

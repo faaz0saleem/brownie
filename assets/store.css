@@ -77,7 +77,7 @@ a{color:inherit;text-decoration:none}img{max-width:100%;display:block}
 .section{padding:60px 0}
 .section-head{text-align:center;margin-bottom:40px}
 .section-head .eyebrow{margin-bottom:12px}
-.section-head h2{font-family:var(--display);font-size:clamp(1.9rem,4vw,2.7rem)}
+.section-head h1,.section-head h2{font-family:var(--display);font-size:clamp(1.9rem,4vw,2.7rem)}
 .section-head p{color:var(--cream-dim);max-width:560px;margin:12px auto 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px}
 .card{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);transition:transform .2s,border-color .2s;display:flex;flex-direction:column}
@@ -308,14 +308,14 @@ body{
 .hero-badges div:last-child{border-right:none;padding-right:0}
 
 /* ---- Section rhythm & headings ---- */
-.section-head h2{letter-spacing:-.5px}
-.section-head h2::after{
+.section-head h1,.section-head h2{letter-spacing:-.5px}
+.section-head h1::after,.section-head h2::after{
   content:"";display:block;width:56px;height:4px;border-radius:4px;margin:14px auto 0;
   background:linear-gradient(90deg,var(--caramel),var(--pink));
 }
-.section-head[style*="left"] h2::after{margin-left:0}
+.section-head[style*="left"] h1::after,.section-head[style*="left"] h2::after{margin-left:0}
 
-/* ---- Testimonials ---- */
+/* ---- Promise cards (was testimonials) ---- */
 .quotes{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:22px}
 .quote{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow);position:relative}
 .quote::before{content:"“";position:absolute;top:6px;right:18px;font-family:var(--display);font-size:4.4rem;color:#f3d2a8;line-height:1}

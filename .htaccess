@@ -11,6 +11,19 @@ RewriteRule ^api/(.*)$   api/index.php  [L,QSA]
 RewriteCond %{HTTP_HOST} ^(www\.)?fudgio\.com$ [NC]
 RewriteRule ^$ index.html [L]
 
+# --- Old product URLs -> the real per-brownie pages (301, keeps any ranking) ---
+RewriteCond %{QUERY_STRING} (^|&)b=chocolate(&|$)
+RewriteRule ^product/?$ /brownies/classic-chocolate? [R=301,L]
+RewriteCond %{QUERY_STRING} (^|&)b=nutty-delight(&|$)
+RewriteRule ^product/?$ /brownies/nutty-delight? [R=301,L]
+RewriteCond %{QUERY_STRING} (^|&)b=salted-caramel(&|$)
+RewriteRule ^product/?$ /brownies/salted-caramel? [R=301,L]
+RewriteRule ^product/?$ /menu? [R=301,L]
+
+# --- One canonical hostname: www -> non-www, so ranking isn't split ---
+RewriteCond %{HTTP_HOST} ^www\.fudgio\.com$ [NC]
+RewriteRule ^(.*)$ https://fudgio.com/$1 [R=301,L]
+
 # --- Clean URLs: redirect /page.html -> /page (professional URLs) ---
 RewriteCond %{THE_REQUEST} \s/+([^?\s]+)\.html[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
