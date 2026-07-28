@@ -11,6 +11,37 @@ with the admin at **admin.fudgio.com**.
 
 ---
 
+## ✉️ Email setup — REQUIRED before you take orders
+
+Checkout now asks every customer to confirm their email with a **5-digit code**
+before an order can be placed. Those codes are sent from your own mailbox over
+authenticated SMTP, so the store cannot accept orders until this is filled in.
+
+1. In hPanel → **Emails**, make sure the mailbox `faaz.saleem@fudgio.com` exists
+   and you know its password.
+2. Open **hPanel → File Manager → `public_html/.env`** and set:
+
+   ```
+   SMTP_HOST=smtp.hostinger.com
+   SMTP_PORT=587
+   SMTP_SECURE=tls
+   SMTP_USER=faaz.saleem@fudgio.com
+   SMTP_PASS=<the mailbox password>      # server only — never commit this
+   SMTP_FROM=faaz.saleem@fudgio.com
+   ```
+
+3. Test it: open the checkout, type your own email, press **Verify**. The code
+   should arrive within a minute. Check the spam folder the first time — the
+   checkout tells customers to do the same.
+4. To keep the codes out of spam long-term, add **SPF** and **DKIM** DNS records
+   for fudgio.com (hPanel → Emails → *Email accounts* → **DNS settings** shows
+   the exact records to paste into your DNS zone).
+
+If `SMTP_PASS` is blank the code falls back to PHP `mail()`, which most shared
+hosts either block or deliver straight to spam — so set it properly.
+
+---
+
 ## 0. What kind of Hostinger hosting do you need?
 
 Fudgio is a **Node.js application** (it needs a running server for the database, logins and orders).

@@ -358,3 +358,44 @@ html{scroll-padding-top:90px}
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
   outline:3px solid rgba(201,118,46,.45);outline-offset:2px;border-radius:8px;
 }
+
+/* ---- Checkout email verification ---- */
+.verify-row{display:flex;gap:8px;align-items:stretch}
+.verify-row input{flex:1;min-width:0}
+.verify-btn{
+  flex:0 0 auto;white-space:nowrap;cursor:pointer;
+  border:1px solid #e6b980;border-radius:12px;padding:0 16px;
+  font-family:inherit;font-weight:800;font-size:.86rem;color:#8d4a11;
+  background:linear-gradient(135deg,#ffe9cd,#ffd6ad);
+  transition:filter .18s,transform .12s;
+}
+.verify-btn:hover:not(:disabled){filter:brightness(1.05)}
+.verify-btn:active:not(:disabled){transform:translateY(1px)}
+.verify-btn:disabled{opacity:.55;cursor:not-allowed}
+.otp-wrap{margin:-6px 0 16px;padding:14px 16px;border:1px dashed #e8c79c;border-radius:14px;background:#fff7ee}
+/* A long email address must wrap instead of stretching the whole panel. */
+.otp-note{font-size:.86rem;color:var(--cream-dim);line-height:1.55;margin-bottom:12px;overflow-wrap:anywhere;word-break:break-word}
+.otp-row{max-width:340px}
+.otp-input{letter-spacing:8px;font-weight:800;text-align:center;font-size:1.05rem}
+.otp-input::placeholder{letter-spacing:8px;color:#d7bda1}
+.otp-ok{margin-top:8px;font-size:.85rem;font-weight:700;color:#1c7c46}
+.link-btn{
+  margin-top:9px;background:none;border:0;padding:0;cursor:pointer;
+  font-family:inherit;font-size:.8rem;font-weight:600;color:#a85413;text-decoration:underline;
+}
+.link-btn:disabled{opacity:.55;cursor:not-allowed;text-decoration:none}
+
+/* Selects should match the text inputs. */
+.fg select{
+  width:100%;font-family:inherit;font-size:.95rem;color:inherit;
+  padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;
+  appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a85413' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;
+}
+
+/* Grid items default to min-width:auto, which lets a wide child stretch the
+   whole layout on small screens. Keep panels shrinkable. */
+.split{min-width:0}
+.split > *{min-width:0}
+.panel{min-width:0}

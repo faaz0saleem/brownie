@@ -42,6 +42,108 @@ function summaryHtml(){
     +'<div class="srow tot"><span>Total</span><span>'+money(cartTotal())+'</span></div>'
     +'<div class="cod">💵 Cash on Delivery only</div></div>';
 }
+/* ---------- email verification ---------- */
+var VERIFIED_EMAIL = '';      // the address confirmed with a code in this session
+var resendTimer = null;
+
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+function emailFieldHTML(){
+  return '<div class="fg"><label>Email *</label>'
+    +'<div class="verify-row">'
+      +'<input id="fEmail" type="email" autocomplete="email" placeholder="you@email.com" oninput="emailChanged()"/>'
+      +'<button type="button" class="verify-btn" id="vBtn" onclick="sendCode()">Verify</button>'
+    +'</div>'
+    +'<div class="otp-ok" id="otpOk" hidden>✅ Email verified</div>'
+  +'</div>';
+}
+
+// Shown full-width under the phone/email row once a code has been sent.
+function otpBlockHTML(){
+  return '<div class="otp-wrap" id="otpWrap" hidden>'
+    +'<div class="otp-note" id="otpNote"></div>'
+    +'<div class="verify-row otp-row">'
+      +'<input id="fCode" class="otp-input" inputmode="numeric" maxlength="5" autocomplete="one-time-code" placeholder="00000"/>'
+      +'<button type="button" class="verify-btn" id="cBtn" onclick="confirmCode()">Confirm code</button>'
+    +'</div>'
+    +'<button type="button" class="link-btn" id="rBtn" onclick="sendCode()">Send the code again</button>'
+  +'</div>';
+}
+
+function api(method, url, data, cb){
+  var x = new XMLHttpRequest();
+  x.open(method, url, true);
+  x.setRequestHeader('Content-Type','application/json');
+  x.onload = function(){
+    var d = {}; try{ d = JSON.parse(x.responseText)||{}; }catch(e){}
+    cb(x.status>=200 && x.status<300, d);
+  };
+  x.onerror = function(){ cb(false, {error:'Network error. Please check your connection and try again.'}); };
+  x.send(data ? JSON.stringify(data) : null);
+}
+
+// Typing a different address invalidates the previous confirmation.
+function emailChanged(){
+  var email = (document.getElementById('fEmail').value||'').trim().toLowerCase();
+  var ok = document.getElementById('otpOk'), btn = document.getElementById('vBtn');
+  if (email && email === VERIFIED_EMAIL){ ok.hidden = false; btn.hidden = true; }
+  else { ok.hidden = true; btn.hidden = false; }
+}
+
+function sendCode(){
+  var email = (document.getElementById('fEmail').value||'').trim();
+  var err = document.getElementById('err');
+  if(!validEmail(email)){ err.textContent = 'Please enter a valid email address first.'; document.getElementById('fEmail').focus(); return; }
+  err.textContent = '';
+  var btn = document.getElementById('vBtn'), rBtn = document.getElementById('rBtn');
+  btn.disabled = true; rBtn.disabled = true; btn.textContent = 'Sending…';
+  api('POST','/api/verify/send',{email:email}, function(ok, d){
+    btn.textContent = 'Verify';
+    if(!ok){ btn.disabled = false; rBtn.disabled = false; err.textContent = d.error || 'Could not send the code. Please try again.'; return; }
+    document.getElementById('otpWrap').hidden = false;
+    document.getElementById('otpNote').innerHTML =
+      'We sent a 5-digit code to <strong>' + esc(email) + '</strong>. '
+      + 'It can take a minute to arrive — <strong>if you can\'t find it, please check your spam / junk folder.</strong>';
+    document.getElementById('fCode').focus();
+    startResendCooldown(45);
+  });
+}
+
+function startResendCooldown(secs){
+  var rBtn = document.getElementById('rBtn'), vBtn = document.getElementById('vBtn');
+  clearInterval(resendTimer);
+  rBtn.disabled = true; vBtn.disabled = true;
+  rBtn.textContent = 'Send the code again (' + secs + 's)';
+  resendTimer = setInterval(function(){
+    secs--;
+    if(secs <= 0){
+      clearInterval(resendTimer);
+      rBtn.disabled = false; vBtn.disabled = false;
+      rBtn.textContent = 'Send the code again';
+    } else rBtn.textContent = 'Send the code again (' + secs + 's)';
+  }, 1000);
+}
+
+function confirmCode(){
+  var email = (document.getElementById('fEmail').value||'').trim();
+  var code = (document.getElementById('fCode').value||'').replace(/\D/g,'');
+  var err = document.getElementById('err');
+  if(code.length !== 5){ err.textContent = 'Please enter the 5-digit code from the email.'; return; }
+  err.textContent = '';
+  var cBtn = document.getElementById('cBtn'); cBtn.disabled = true; cBtn.textContent = 'Checking…';
+  api('POST','/api/verify/check',{email:email, code:code}, function(ok, d){
+    cBtn.disabled = false; cBtn.textContent = 'Confirm';
+    if(!ok){ err.textContent = d.error || 'That code is not correct.'; return; }
+    clearInterval(resendTimer);
+    VERIFIED_EMAIL = email.toLowerCase();
+    document.getElementById('otpWrap').hidden = true;
+    document.getElementById('vBtn').hidden = true;
+    document.getElementById('otpOk').hidden = false;
+    toast('Email verified ✅');
+  });
+}
+
 function render(){
   var root=document.getElementById('root');
   if(!getCart().length){ root.innerHTML='<div class="empty"><div class="em">🛒</div><p>Your cart is empty.</p><a href="/menu" class="btn btn-primary" style="margin-top:18px">Browse the menu</a></div>'; updateCount(); return; }
@@ -49,7 +151,9 @@ function render(){
     +'<div class="pay"><div class="ico">💵</div><div><b>Cash on Delivery</b><br><small>Pay in cash when your brownies arrive. No online payment.</small></div></div>'
     +'<div class="err" id="err"></div>'
     +'<div class="fg"><label>Full name *</label><input id="fName" placeholder="e.g. Ayesha Khan"/></div>'
-    +'<div class="frow"><div class="fg"><label>Phone *</label><input id="fPhone" type="tel" placeholder="03xx-xxxxxxx"/></div><div class="fg"><label>Email *</label><input id="fEmail" type="email" placeholder="you@email.com"/></div></div>'
+    +'<div class="frow"><div class="fg"><label>Phone *</label><input id="fPhone" type="tel" autocomplete="tel" placeholder="03xx-xxxxxxx"/></div>'
+    + emailFieldHTML() + '</div>'
+    + otpBlockHTML()
     +'<div class="fg"><label>City *</label><select id="fCity"><option value="Lahore">Lahore</option></select>'
     +'<div style="font-size:.8rem;color:var(--cream-dim);margin-top:6px">🚚 We currently deliver in <strong>Lahore</strong> only.</div></div>'
     +'<div class="fg"><label>Delivery address *</label><textarea id="fAddr" rows="2" placeholder="House #, street, area"></textarea></div>'
@@ -65,6 +169,10 @@ function place(){
   if(!name||!phone||!email||!city||!addr){ err.textContent='Please fill in name, phone, email, city and address.'; return; }
   if(!validPhone(phone)){ err.textContent='Please enter a valid phone number (10–15 digits).'; return; }
   if(!validEmail(email)){ err.textContent='Please enter a valid email address.'; return; }
+  if(email.toLowerCase()!==VERIFIED_EMAIL){
+    err.textContent='Please verify your email first — tap “Verify” next to the email box and enter the code we send you.';
+    document.getElementById('fEmail').focus(); return;
+  }
   if(city.toLowerCase()!=='lahore'){ err.textContent='Sorry, we currently deliver in Lahore only.'; return; }
   err.textContent='';
   var btn=document.getElementById('place'); btn.disabled=true; btn.textContent='Placing order…';
@@ -76,13 +184,13 @@ function place(){
     if(x.status>=200&&x.status<300){ var o=JSON.parse(x.responseText).order; if(o&&o.id) orderId=o.id; }
     else { var e=JSON.parse(x.responseText); err.textContent=(e&&e.error)||'Could not place order. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; return; }
   }catch(ex){ err.textContent='Network error. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; return; }
-  localStorage.removeItem('fudgio_cart'); updateCount();
+  localStorage.removeItem('fudgio_cart'); updateCount(); VERIFIED_EMAIL='';
   var trackUrl='/track?id='+encodeURIComponent(orderId)+'&phone='+encodeURIComponent(phone);
   document.getElementById('root').innerHTML='<div class="empty"><div class="em">✅</div>'
     +'<h1 style="font-family:var(--display)">Order placed!</h1>'
     +'<p style="margin:6px 0 2px">Your tracking number is</p>'
-    +'<div style="font-family:var(--display);font-weight:900;font-size:1.8rem;color:var(--accent);letter-spacing:1px;margin:6px 0 4px">'+orderId+'</div>'
-    +'<p>Thanks, '+name+'! We\'ve received your order and will confirm shortly. Pay cash on delivery. 🍫<br>Save your tracking number to check your order status anytime.</p>'
+    +'<div style="font-family:var(--display);font-weight:900;font-size:1.8rem;color:var(--accent);letter-spacing:1px;margin:6px 0 4px">'+esc(orderId)+'</div>'
+    +'<p>Thanks, '+esc(name)+'! We\'ve received your order and will confirm shortly. Pay cash on delivery. 🍫<br>Save your tracking number to check your order status anytime.</p>'
     +'<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px">'
     +'<a href="'+trackUrl+'" class="btn btn-primary">📦 Track your order</a>'
     +'<a href="/menu" class="btn btn-ghost">Order more</a></div></div>';

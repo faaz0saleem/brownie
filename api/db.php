@@ -3,6 +3,7 @@
 // Hostinger MySQL) when DB_HOST is set in .env, otherwise falls back to a local
 // SQLite file so the app still runs for development. Mirrors the Node schema.
 declare(strict_types=1);
+require_once __DIR__ . '/mailer.php';
 
 /* ---------------- .env loader (shares the project's .env) ---------------- */
 function env_all(): array {
@@ -120,6 +121,12 @@ function db_init(PDO $pdo, string $driver): void {
   $pdo->exec("CREATE TABLE IF NOT EXISTS visits (
     id VARCHAR(40) PRIMARY KEY, visitor VARCHAR(40), page VARCHAR(191), ip VARCHAR(64),
     referrer VARCHAR(255), ua VARCHAR(255), created_at BIGINT)");
+  $pdo->exec("CREATE TABLE IF NOT EXISTS email_otp (
+    email VARCHAR(191) PRIMARY KEY, code_hash VARCHAR(255), expires_at BIGINT,
+    attempts INT DEFAULT 0, sends INT DEFAULT 0, last_sent BIGINT,
+    verified_at BIGINT, created_at BIGINT)");
+  $pdo->exec("CREATE TABLE IF NOT EXISTS rate_hits (
+    id VARCHAR(40) PRIMARY KEY, bucket VARCHAR(80), ip VARCHAR(64), created_at BIGINT)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS counters (name VARCHAR(40) PRIMARY KEY, value BIGINT)");
   $pdo->exec("INSERT " . ($driver === 'mysql' ? 'IGNORE ' : 'OR IGNORE ') .
              "INTO counters (name, value) VALUES ('orderSeq', 1000)");
@@ -255,7 +262,19 @@ function next_order_id(): string {
   $v = db()->query("SELECT value FROM counters WHERE name='orderSeq'")->fetch()['value'];
   return 'FUD-' . $v;
 }
+// Strip markup and control characters from anything a customer types, and cap
+// its length. Output is still escaped when rendered — this is defence in depth.
+function clean_text($s, int $max = 200): string {
+  $s = is_string($s) ? $s : '';
+  $s = strip_tags($s);
+  $s = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $s) ?? '';
+  return trim(mb_substr($s, 0, $max));
+}
+
 function order_create(array $items, array $customer, ?string $userId): array {
+  foreach (['name'=>80,'phone'=>30,'email'=>191,'address'=>300,'city'=>60,'notes'=>300] as $f=>$max)
+    if (isset($customer[$f])) $customer[$f] = clean_text($customer[$f], $max);
+
   if (!$items) return ['error' => 'Your cart is empty.'];
   foreach (['name','phone','email','address','city'] as $f)
     if (empty($customer[$f])) return ['error' => 'Please provide your name, phone, email, address and city.'];
@@ -268,6 +287,51 @@ function order_create(array $items, array $customer, ?string $userId): array {
   $allowedCity = env('DELIVERY_CITY', 'Lahore');
   if (strcasecmp(trim($customer['city']), $allowedCity) !== 0)
     return ['error' => "Sorry, we currently deliver in $allowedCity only."];
+
+  $email = strtolower(trim($customer['email']));
+
+  // The email must have been confirmed with a code before an order is accepted.
+  if (!email_is_verified($email))
+    return ['error' => 'Please verify your email address before placing the order.'];
+
+  // --- Silent abuse controls (deliberately not advertised on the site) ---
+  $now = now_ms();
+  $hour = 3600000;
+
+  // One order per email address per hour.
+  try {
+    $st = db()->prepare("SELECT COUNT(*) c FROM orders WHERE created_at > ? AND LOWER(customer) LIKE ?");
+    $st->execute([$now - $hour, '%"email":"' . str_replace('%','\\%',$email) . '"%']);
+    if ((int)$st->fetch()['c'] > 0) return ['error' => 'We could not place this order right now. Please try again later.'];
+  } catch (Throwable $e) {}
+
+  // One order per phone number per hour (stops trivially swapping the email).
+  try {
+    $st = db()->prepare("SELECT COUNT(*) c FROM orders WHERE created_at > ? AND customer LIKE ?");
+    $st->execute([$now - $hour, '%"phone":"' . str_replace('%','\\%',trim($customer['phone'])) . '"%']);
+    if ((int)$st->fetch()['c'] > 0) return ['error' => 'We could not place this order right now. Please try again later.'];
+  } catch (Throwable $e) {}
+
+  // Per-IP throttle so one machine cannot place many orders with different details.
+  $ip = function_exists('client_ip') ? client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '');
+  if ($ip !== '') {
+    if (rate_count('order:' . $ip, $hour) >= 3)
+      return ['error' => 'We could not place this order right now. Please try again later.'];
+    rate_hit('order:' . $ip, $ip);
+  }
+
+  // Bulk-order guards: cap per-line quantity, total units and order value.
+  $maxPerLine  = (int) env('MAX_QTY_PER_ITEM', '20');
+  $maxUnits    = (int) env('MAX_UNITS_PER_ORDER', '30');
+  $maxValue    = (int) env('MAX_ORDER_VALUE', '50000');
+  $totalUnits  = 0;
+  foreach ($items as $it) {
+    $q = max(1, (int)($it['qty'] ?? 1));
+    if ($q > $maxPerLine) return ['error' => "For large orders please contact us directly — maximum $maxPerLine per item online."];
+    $totalUnits += $q;
+  }
+  if ($totalUnits > $maxUnits)
+    return ['error' => "For bulk orders please contact us directly — maximum $maxUnits items per online order."];
 
   $lineItems = []; $subtotal = 0;
   foreach ($items as $it) {
@@ -286,13 +350,18 @@ function order_create(array $items, array $customer, ?string $userId): array {
     $lineItems[] = ['productId'=>$p['id'],'name'=>$p['name'],'emoji'=>$p['emoji'],
       'size'=>$sizeLabel,'qty'=>$qty,'price'=>$unit,'lineTotal'=>$lineTotal];
   }
+  // Everything that can reject the order must run BEFORE stock is committed,
+  // otherwise a rejected order would silently eat inventory.
+  $s = settings_get();
+  if (empty($s['storeOpen'])) return ['error' => 'Sorry, we are currently not accepting orders. Please check back soon.'];
+  if ($subtotal > $maxValue)
+    return ['error' => 'For large orders please contact us directly so we can arrange it properly.'];
+
   // commit stock
   foreach ($lineItems as $li) {
     $p = product_get($li['productId'], true);
     product_update($p['id'], ['stock'=>$p['stock']-$li['qty'], 'sold'=>$p['sold']+$li['qty']]);
   }
-  $s = settings_get();
-  if (empty($s['storeOpen'])) return ['error' => 'Sorry, we are currently not accepting orders. Please check back soon.'];
   $delivery = $subtotal >= $s['freeDeliveryOver'] ? 0 : $s['deliveryFee'];
   $now = now_ms();
   $order = [
@@ -325,6 +394,9 @@ function order_create(array $items, array $customer, ?string $userId): array {
   ]);
   if (!$userId) { db()->prepare("UPDATE orders SET user_id=? WHERE id=?")->execute([$user['id'],$order['id']]); $order['userId']=$user['id']; }
 
+  // The confirmation is single-use: the next order needs a fresh code.
+  try { db()->prepare("UPDATE email_otp SET verified_at=NULL WHERE email=?")->execute([$email]); } catch (Throwable $e) {}
+
   notify_order($order);
   return ['order' => $order];
 }
@@ -344,9 +416,7 @@ function notify_order(array $o): void {
     . "\nItems:\n$lines\nSubtotal: $cur " . number_format($o['subtotal'])
     . "\nDelivery: " . ($o['deliveryFee'] == 0 ? 'FREE' : "$cur " . number_format($o['deliveryFee']))
     . "\nTOTAL: $cur " . number_format($o['total']) . " (Cash on Delivery)\n\nManage it in your admin dashboard.";
-  $from = env('SMTP_FROM', 'orders@' . preg_replace('#^https?://#', '', cfg()['siteUrl']));
-  $headers = "From: Fudgio Orders <$from>\r\nContent-Type: text/plain; charset=UTF-8";
-  @mail($to, "New order {$o['id']} - $cur " . number_format($o['total']) . ' (COD)', $body, $headers);
+  send_mail($to, "New order {$o['id']} - $cur " . number_format($o['total']) . ' (COD)', $body);
 }
 function orders_all(?string $userId = null): array {
   if ($userId) { $st = db()->prepare("SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC"); $st->execute([$userId]); $rows=$st->fetchAll(); }
@@ -452,11 +522,116 @@ function orders_csv(): string {
   return $out;
 }
 
+/* ---------------- generic rate limiting ---------------- */
+function rate_hit(string $bucket, string $ip): void {
+  try {
+    db()->prepare("INSERT INTO rate_hits (id,bucket,ip,created_at) VALUES (?,?,?,?)")
+       ->execute([gen_id(), $bucket, $ip, now_ms()]);
+    // opportunistic cleanup of anything older than a day
+    db()->prepare("DELETE FROM rate_hits WHERE created_at < ?")->execute([now_ms() - 86400000]);
+  } catch (Throwable $e) {}
+}
+function rate_count(string $bucket, int $windowMs): int {
+  try {
+    $st = db()->prepare("SELECT COUNT(*) c FROM rate_hits WHERE bucket=? AND created_at > ?");
+    $st->execute([$bucket, now_ms() - $windowMs]);
+    return (int) $st->fetch()['c'];
+  } catch (Throwable $e) { return 0; }
+}
+
+/* ---------------- email verification (OTP) ---------------- */
+function otp_row(string $email): ?array {
+  $st = db()->prepare("SELECT * FROM email_otp WHERE email=? LIMIT 1");
+  $st->execute([strtolower(trim($email))]);
+  $r = $st->fetch();
+  return $r ?: null;
+}
+function otp_send(string $email, string $ip): array {
+  $email = strtolower(trim($email));
+  if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return ['error' => 'Please enter a valid email address.'];
+
+  $now = now_ms();
+  $row = otp_row($email);
+
+  // Anti-abuse: cooldown between sends, and a daily cap per address.
+  if ($row) {
+    if ($row['last_sent'] !== null && $now - (int)$row['last_sent'] < 45000)
+      return ['error' => 'Please wait a moment before requesting another code.'];
+    if ((int)$row['sends'] >= 8 && $now - (int)$row['created_at'] < 86400000)
+      return ['error' => 'Too many codes requested for this address. Please try again later.'];
+  }
+  // Per-IP cap so one machine cannot spray codes at many addresses.
+  if (rate_count('otp:' . $ip, 3600000) >= 15)
+    return ['error' => 'Too many verification attempts. Please try again later.'];
+  rate_hit('otp:' . $ip, $ip);
+
+  $code = str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+  $hash = password_hash($code, PASSWORD_BCRYPT);
+  $expires = $now + 10 * 60 * 1000;   // 10 minutes
+
+  if ($row) {
+    db()->prepare("UPDATE email_otp SET code_hash=?, expires_at=?, attempts=0, sends=sends+1, last_sent=?, verified_at=NULL WHERE email=?")
+       ->execute([$hash, $expires, $now, $email]);
+  } else {
+    db()->prepare("INSERT INTO email_otp (email,code_hash,expires_at,attempts,sends,last_sent,verified_at,created_at) VALUES (?,?,?,0,1,?,NULL,?)")
+       ->execute([$email, $hash, $expires, $now, $now]);
+  }
+
+  $brand = cfg()['brandName'];
+  $subject = $code . ' is your ' . $brand . ' verification code';
+  $text = "Your $brand verification code is: $code\n\n"
+        . "Enter this code on the checkout page to confirm your email and place your order.\n"
+        . "The code expires in 10 minutes.\n\n"
+        . "If you didn't request this, you can ignore this email.\n\n- $brand";
+  $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;border:1px solid #eee;border-radius:14px;overflow:hidden">'
+        . '<div style="background:linear-gradient(135deg,#c9762e,#f2557c);color:#fff;padding:20px 24px">'
+        . '<h2 style="margin:0;font-size:20px">🍫 ' . htmlspecialchars($brand) . ' — verify your email</h2></div>'
+        . '<div style="padding:24px">'
+        . '<p style="margin:0 0 14px;color:#444">Use this code to confirm your email and place your order:</p>'
+        . '<div style="font-size:34px;font-weight:800;letter-spacing:10px;color:#a85413;text-align:center;'
+        . 'background:#fff6ec;border:1px solid #f0cfa4;border-radius:12px;padding:16px 10px">' . $code . '</div>'
+        . '<p style="color:#777;font-size:13px;margin:16px 0 0">This code expires in 10 minutes. '
+        . "If you didn't request it, you can safely ignore this email.</p></div></div>";
+
+  [$ok, $err] = send_mail($email, $subject, $text, $html);
+  if (!$ok) {
+    error_log('Fudgio OTP send failed: ' . $err);
+    return ['error' => 'We could not send the code right now. Please try again in a moment.'];
+  }
+  return ['ok' => true];
+}
+
+function otp_check(string $email, string $code): array {
+  $email = strtolower(trim($email));
+  $row = otp_row($email);
+  if (!$row) return ['error' => 'Please request a verification code first.'];
+  if ((int)$row['attempts'] >= 6) return ['error' => 'Too many incorrect attempts. Please request a new code.'];
+  if (now_ms() > (int)$row['expires_at']) return ['error' => 'That code has expired. Please request a new one.'];
+
+  db()->prepare("UPDATE email_otp SET attempts=attempts+1 WHERE email=?")->execute([$email]);
+  if (!password_verify(trim($code), (string)$row['code_hash']))
+    return ['error' => 'That code is not correct. Please check and try again.'];
+
+  db()->prepare("UPDATE email_otp SET verified_at=?, attempts=0 WHERE email=?")->execute([now_ms(), $email]);
+  return ['ok' => true];
+}
+
+// An address counts as verified for a limited window after confirming the code.
+function email_is_verified(string $email): bool {
+  $row = otp_row($email);
+  if (!$row || $row['verified_at'] === null) return false;
+  return (now_ms() - (int)$row['verified_at']) < 2 * 3600 * 1000;   // 2 hours
+}
+
 /* ---------------- visitor tracking ---------------- */
 function record_visit(string $page, string $visitor, string $ip, string $ref, string $ua): void {
   try {
+    // Everything here comes from the browser, so strip markup before storing.
+    $page = clean_text($page, 191);
+    if ($page === '' || $page[0] !== '/') $page = '/';
     $st = db()->prepare("INSERT INTO visits (id,visitor,page,ip,referrer,ua,created_at) VALUES (?,?,?,?,?,?,?)");
-    $st->execute([gen_id(), substr($visitor,0,40), substr($page,0,191), substr($ip,0,64), substr($ref,0,255), substr($ua,0,255), now_ms()]);
+    $st->execute([gen_id(), clean_text($visitor,40), $page, substr($ip,0,64),
+                  clean_text($ref,255), clean_text($ua,255), now_ms()]);
   } catch (Throwable $e) { /* never break the page over analytics */ }
 }
 function visit_stats(): array {

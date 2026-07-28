@@ -1,5 +1,9 @@
 /* ===== Fudgio — Admin dashboard logic ===== */
 let CUR = 'Rs';
+// Escape anything a customer typed before putting it in HTML. Order details are
+// attacker-controlled text, so this is what stops a stored XSS in the dashboard.
+const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const RS = (n) => CUR + ' ' + Number(n).toLocaleString('en-US');
 let TOKEN = localStorage.getItem('fud_admin_token') || '';
 let STATUSES = ['Pending', 'Confirmed', 'Baking', 'Out for Delivery', 'Delivered', 'Cancelled'];
@@ -130,7 +134,7 @@ async function loadDashboard() {
 
   const alertEl = document.getElementById('lowStockAlert');
   alertEl.innerHTML = a.lowStock.length
-    ? `<div class="alert-strip">⚠️ Low / out of stock: ${a.lowStock.map((p) => `${p.emoji} ${p.name} (${p.stock})`).join(' · ')}</div>` : '';
+    ? `<div class="alert-strip">⚠️ Low / out of stock: ${a.lowStock.map((p) => `${esc(p.emoji)} ${esc(p.name)} (${p.stock})`).join(' · ')}</div>` : '';
 
   const maxRev = Math.max(1, ...a.salesByDay.map((d) => d.revenue));
   document.getElementById('salesChart').innerHTML = a.salesByDay.map((d) => `
@@ -140,8 +144,8 @@ async function loadDashboard() {
 
   const maxUnits = Math.max(1, ...a.topProducts.map((p) => p.units));
   document.getElementById('topProducts').innerHTML = a.topProducts.length ? a.topProducts.map((p) => `
-    <div class="rank-item"><div class="r-emoji">${p.emoji}</div><div class="r-body">
-      <div class="r-name"><span>${p.name}</span><span>${p.units} sold</span></div>
+    <div class="rank-item"><div class="r-emoji">${esc(p.emoji)}</div><div class="r-body">
+      <div class="r-name"><span>${esc(p.name)}</span><span>${p.units} sold</span></div>
       <div class="r-track"><div class="r-fill" style="width:${(p.units / maxUnits) * 100}%"></div></div></div></div>`).join('')
     : '<div class="empty-state"><div class="em">🍫</div>No sales yet.</div>';
 
@@ -178,7 +182,7 @@ async function loadDashboard() {
   const maxP = Math.max(1, ...v.topPages.map((p) => p.views));
   document.getElementById('topPages').innerHTML = v.topPages.length ? v.topPages.map((p) => `
     <div class="rank-item"><div class="r-emoji">📄</div><div class="r-body">
-      <div class="r-name"><span>${p.page}</span><span>${p.views}</span></div>
+      <div class="r-name"><span>${esc(p.page)}</span><span>${p.views}</span></div>
       <div class="r-track"><div class="r-fill" style="width:${(p.views / maxP) * 100}%"></div></div></div></div>`).join('')
     : '<div class="empty-state"><div class="em">👀</div>No visits recorded yet.</div>';
 }
@@ -217,22 +221,22 @@ function renderOrders() {
   if (!list.length) { body.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="em">🧾</div>No matching orders.</div></td></tr>`; return; }
   body.innerHTML = list.map((o) => `
     <tr>
-      <td class="mono"><b>${o.id}</b></td>
-      <td><b>${o.customer.name}</b><br/><span class="muted">${o.customer.phone}</span>${o.customer.email ? `<br/><span class="muted" style="font-size:.76rem">${o.customer.email}</span>` : ''}</td>
-      <td>${o.customer.city}<br/><span class="muted" style="font-size:.8rem">${o.customer.address}</span></td>
-      <td class="order-items">${o.items.map((i) => `<span class="oi">${i.emoji} ${i.qty}× ${i.name}${i.size ? ` <span class="muted">(${i.size})</span>` : ''}</span>`).join('<br/>')}</td>
+      <td class="mono"><b>${esc(o.id)}</b></td>
+      <td><b>${esc(o.customer.name)}</b><br/><span class="muted">${esc(o.customer.phone)}</span>${o.customer.email ? `<br/><span class="muted" style="font-size:.76rem">${esc(o.customer.email)}</span>` : ''}</td>
+      <td>${esc(o.customer.city)}<br/><span class="muted" style="font-size:.8rem">${esc(o.customer.address)}</span></td>
+      <td class="order-items">${o.items.map((i) => `<span class="oi">${esc(i.emoji)} ${i.qty}× ${esc(i.name)}${i.size ? ` <span class="muted">(${esc(i.size)})</span>` : ''}</span>`).join('<br/>')}</td>
       <td class="mono"><b>${RS(o.total)}</b></td>
       <td><span class="pill-cod">💵 COD</span></td>
       <td class="muted" style="white-space:nowrap">${fmtDate(o.createdAt)}</td>
       <td>
         <span class="badge ${STATUS_CLASS[o.status]}" style="margin-bottom:6px;display:inline-flex">${o.status}</span><br/>
-        <select class="status-select" onchange="setStatus('${o.id}', this.value)">${STATUSES.map((s) => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
+        <select class="status-select" onchange="setStatus('${esc(o.id)}', this.value)">${STATUSES.map((s) => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
         <div style="display:flex;gap:6px;margin-top:6px">
-          <button class="mini" onclick="orderDetail('${o.id}')">Details</button>
-          <button class="mini" onclick="printOrder('${o.id}')" title="Print packing slip">🖨</button>
-          <button class="mini" onclick="contactCustomer('${o.id}','wa')" title="WhatsApp customer">💬</button>
-          <button class="mini" onclick="contactCustomer('${o.id}','call')" title="Call customer">📞</button>
-          <button class="mini danger" onclick="deleteOrder('${o.id}')">Delete</button>
+          <button class="mini" onclick="orderDetail('${esc(o.id)}')">Details</button>
+          <button class="mini" onclick="printOrder('${esc(o.id)}')" title="Print packing slip">🖨</button>
+          <button class="mini" onclick="contactCustomer('${esc(o.id)}','wa')" title="WhatsApp customer">💬</button>
+          <button class="mini" onclick="contactCustomer('${esc(o.id)}','call')" title="Call customer">📞</button>
+          <button class="mini danger" onclick="deleteOrder('${esc(o.id)}')">Delete</button>
         </div>
       </td>
     </tr>`).join('');
@@ -258,10 +262,10 @@ function orderDetail(id) {
   const idx = steps.indexOf(o.status);
   const tl = o.status === 'Cancelled' ? '<div style="color:var(--bad);font-weight:700">✖ Cancelled</div>'
     : steps.map((s, i) => `<div style="color:${i <= idx ? 'var(--ok)' : 'var(--dim)'};font-weight:600">${i <= idx ? '●' : '○'} ${s}</div>`).join('');
-  showModal(`<h3 style="font-size:1.3rem;margin-bottom:6px">${o.id}</h3>
+  showModal(`<h3 style="font-size:1.3rem;margin-bottom:6px">${esc(o.id)}</h3>
     <span class="badge ${STATUS_CLASS[o.status]}">${o.status}</span>
-    <p style="margin:12px 0"><b>${o.customer.name}</b> · ${o.customer.phone}${o.customer.email ? ' · ' + o.customer.email : ''}<br>📍 ${o.customer.address}, ${o.customer.city}${o.customer.notes ? '<br><i>Note: ' + o.customer.notes + '</i>' : ''}</p>
-    <table style="width:100%;border-collapse:collapse">${o.items.map((i) => `<tr><td style="padding:6px 0">${i.emoji} ${i.qty}× ${i.name}${i.size ? ' (' + i.size + ')' : ''}</td><td style="text-align:right">${RS(i.lineTotal)}</td></tr>`).join('')}
+    <p style="margin:12px 0"><b>${esc(o.customer.name)}</b> · ${esc(o.customer.phone)}${o.customer.email ? ' · ' + esc(o.customer.email) : ''}<br>📍 ${esc(o.customer.address)}, ${esc(o.customer.city)}${o.customer.notes ? '<br><i>Note: ' + esc(o.customer.notes) + '</i>' : ''}</p>
+    <table style="width:100%;border-collapse:collapse">${o.items.map((i) => `<tr><td style="padding:6px 0">${esc(i.emoji)} ${i.qty}× ${esc(i.name)}${i.size ? ' (' + esc(i.size) + ')' : ''}</td><td style="text-align:right">${RS(i.lineTotal)}</td></tr>`).join('')}
       <tr><td style="padding:8px 0;border-top:1px solid var(--line);font-weight:800">Total</td><td style="text-align:right;border-top:1px solid var(--line);font-weight:800">${RS(o.total)} (COD)</td></tr></table>
     <h4 style="margin:16px 0 8px">Status timeline</h4><div style="display:flex;gap:16px;flex-wrap:wrap">${tl}</div>`);
 }
@@ -284,13 +288,13 @@ async function loadInventory() {
   }
   grid.innerHTML = products.map((p) => `
     <div class="inv-card">
-      <div class="inv-top" style="background:${p.gradient}">
+      <div class="inv-top" style="background:${esc(p.gradient)}">
         ${!p.active ? '<span class="inactive-flag">Hidden</span>' : ''}
-        ${p.imageUrl ? `<img src="${p.imageUrl}" alt="${p.name}" class="inv-img">` : `<span class="inv-emoji">${p.emoji}</span>`}
+        ${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" class="inv-img">` : `<span class="inv-emoji">${esc(p.emoji)}</span>`}
       </div>
       <div class="inv-body">
-        <h4>${p.name} ${stockChip(p.stock)}</h4>
-        <div class="inv-meta">${p.containsNuts ? '🥜 Contains nuts · ' : ''}${(p.allergens || []).join(', ') || '—'}</div>
+        <h4>${esc(p.name)} ${stockChip(p.stock)}</h4>
+        <div class="inv-meta">${p.containsNuts ? '🥜 Contains nuts · ' : ''}${esc((p.allergens || []).join(', ')) || '—'}</div>
         <div class="inv-stats">
           <div><div class="n">${p.sold || 0}</div><div class="t">Sold</div></div>
           <div><div class="n">${p.stock}</div><div class="t">In stock</div></div>
@@ -367,10 +371,10 @@ async function loadCustomers() {
   if (!users.length) { body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="em">👥</div>No customers yet.</div></td></tr>`; return; }
   body.innerHTML = users.map((u) => `
     <tr>
-      <td><b><a href="#" onclick="customerDetail('${u.id}','${(u.name||'').replace(/'/g,'')}');return false" style="color:var(--brand)">${u.name || '—'}</a></b></td>
-      <td class="mono">${u.phone || ''}${u.email ? `<br/><span class="muted" style="font-size:.8rem">${u.email}</span>` : ''}</td>
-      <td>${u.city ? '📍 ' + u.city : '<span class="muted">—</span>'}</td>
-      <td class="muted" style="max-width:240px">${u.address || '—'}</td>
+      <td><b><a href="#" onclick="customerDetail('${esc(u.id)}','${esc((u.name||'').replace(/['\\]/g,''))}');return false" style="color:var(--brand)">${esc(u.name || '—')}</a></b></td>
+      <td class="mono">${esc(u.phone || '')}${u.email ? `<br/><span class="muted" style="font-size:.8rem">${esc(u.email)}</span>` : ''}</td>
+      <td>${u.city ? '📍 ' + esc(u.city) : '<span class="muted">—</span>'}</td>
+      <td class="muted" style="max-width:240px">${esc(u.address || '—')}</td>
       <td class="mono">${u.orders || 0}</td>
       <td class="mono"><b>${RS(u.totalSpent || 0)}</b></td>
       <td class="muted" style="white-space:nowrap">${u.lastOrderAt ? fmtDate(u.lastOrderAt) : '—'}</td>
@@ -423,15 +427,15 @@ function productForm(p) {
   p = p || { name: '', tagline: '', description: '', price: 900, stock: 30, emoji: '🍫', gradient: 'linear-gradient(135deg,#5b3a29,#2b1a12)', flavors: [], allergens: [], sizes: [], containsNuts: false, featured: false };
   const sizes = (p.sizes && p.sizes.length ? p.sizes : [{ label: 'Box of 6', price: p.price }]).map((s) => `${s.label}:${s.price}`).join(', ');
   return `<h3 style="font-size:1.3rem;margin-bottom:14px">${p.id ? 'Edit' : 'Add'} product</h3>
-    <div class="inv-row"><label style="width:120px">Name</label><input id="pfName" value="${(p.name || '').replace(/"/g, '&quot;')}"></div>
-    <div class="inv-row"><label style="width:120px">Tagline</label><input id="pfTag" value="${(p.tagline || '').replace(/"/g, '&quot;')}"></div>
-    <div class="inv-row"><label style="width:120px">Description</label><input id="pfDesc" value="${(p.description || '').replace(/"/g, '&quot;')}"></div>
-    <div class="inv-row"><label style="width:120px">Emoji</label><input id="pfEmoji" value="${p.emoji || '🍫'}" style="max-width:90px"></div>
+    <div class="inv-row"><label style="width:120px">Name</label><input id="pfName" value="${esc(p.name)}"></div>
+    <div class="inv-row"><label style="width:120px">Tagline</label><input id="pfTag" value="${esc(p.tagline)}"></div>
+    <div class="inv-row"><label style="width:120px">Description</label><input id="pfDesc" value="${esc(p.description)}"></div>
+    <div class="inv-row"><label style="width:120px">Emoji</label><input id="pfEmoji" value="${esc(p.emoji || '🍫')}" style="max-width:90px"></div>
     <div class="inv-row"><label style="width:120px">Base price</label><input type="number" id="pfPrice" value="${p.price}"></div>
     <div class="inv-row"><label style="width:120px">Stock</label><input type="number" id="pfStock" value="${p.stock}"></div>
-    <div class="inv-row"><label style="width:120px">Sizes</label><input id="pfSizes" value="${sizes}" placeholder="Box of 6:900, Box of 12:1650"></div>
-    <div class="inv-row"><label style="width:120px">Flavours</label><input id="pfFlav" value="${(p.flavors || []).join(', ')}"></div>
-    <div class="inv-row"><label style="width:120px">Allergens</label><input id="pfAll" value="${(p.allergens || []).join(', ')}"></div>
+    <div class="inv-row"><label style="width:120px">Sizes</label><input id="pfSizes" value="${esc(sizes)}" placeholder="Box of 6:900, Box of 12:1650"></div>
+    <div class="inv-row"><label style="width:120px">Flavours</label><input id="pfFlav" value="${esc((p.flavors || []).join(', '))}"></div>
+    <div class="inv-row"><label style="width:120px">Allergens</label><input id="pfAll" value="${esc((p.allergens || []).join(', '))}"></div>
     <div class="inv-row"><label style="width:120px">Contains nuts</label><select id="pfNuts"><option value="0" ${!p.containsNuts ? 'selected' : ''}>No</option><option value="1" ${p.containsNuts ? 'selected' : ''}>Yes</option></select></div>
     <div class="inv-row"><label style="width:120px">Featured</label><select id="pfFeat"><option value="0" ${!p.featured ? 'selected' : ''}>No</option><option value="1" ${p.featured ? 'selected' : ''}>Yes</option></select></div>
     <button class="btn-sm btn-save" style="margin-top:10px" onclick="submitProduct('${p.id || ''}')">💾 Save</button>`;
@@ -460,16 +464,16 @@ async function submitProduct(id) {
 // --- 1. Print / packing slip for an order ---
 function printOrder(id){
   var o=ORDERS.find(function(x){return x.id===id;}); if(!o) return;
-  var rows=o.items.map(function(i){return '<tr><td>'+i.qty+'× '+i.name+(i.size?' ('+i.size+')':'')+'</td><td style="text-align:right">'+RS(i.lineTotal)+'</td></tr>';}).join('');
+  var rows=o.items.map(function(i){return '<tr><td>'+i.qty+'× '+esc(i.name)+(i.size?' ('+esc(i.size)+')':'')+'</td><td style="text-align:right">'+RS(i.lineTotal)+'</td></tr>';}).join('');
   var w=window.open('','_blank','width=620,height=760');
-  w.document.write('<html><head><title>'+o.id+' — Fudgio</title><style>'
+  w.document.write('<html><head><title>'+esc(o.id)+' — Fudgio</title><style>'
     +'body{font-family:Arial,sans-serif;padding:28px;color:#222}h1{margin:0 0 4px;font-size:22px}'
     +'.muted{color:#666;font-size:13px}table{width:100%;border-collapse:collapse;margin:16px 0}'
     +'td{padding:7px 0;border-bottom:1px solid #eee}.tot td{font-weight:800;border-top:2px solid #333;border-bottom:none}'
     +'.box{border:1px solid #ddd;border-radius:8px;padding:14px;margin-top:14px}</style></head><body>'
-    +'<h1>🍫 Fudgio — Packing Slip</h1><div class="muted">Order '+o.id+' · '+fmtDate(o.createdAt)+' · '+o.status+'</div>'
-    +'<div class="box"><b>'+o.customer.name+'</b><br>'+o.customer.phone+(o.customer.email?'<br>'+o.customer.email:'')
-    +'<br>'+o.customer.address+', '+o.customer.city+(o.customer.notes?'<br><i>Note: '+o.customer.notes+'</i>':'')+'</div>'
+    +'<h1>🍫 Fudgio — Packing Slip</h1><div class="muted">Order '+esc(o.id)+' · '+esc(fmtDate(o.createdAt))+' · '+esc(o.status)+'</div>'
+    +'<div class="box"><b>'+esc(o.customer.name)+'</b><br>'+esc(o.customer.phone)+(o.customer.email?'<br>'+esc(o.customer.email):'')
+    +'<br>'+esc(o.customer.address)+', '+esc(o.customer.city)+(o.customer.notes?'<br><i>Note: '+esc(o.customer.notes)+'</i>':'')+'</div>'
     +'<table>'+rows+'<tr><td>Delivery</td><td style="text-align:right">'+(o.deliveryFee===0?'FREE':RS(o.deliveryFee))+'</td></tr>'
     +'<tr class="tot"><td>TOTAL (Cash on Delivery)</td><td style="text-align:right">'+RS(o.total)+'</td></tr></table>'
     +'<p class="muted">Thank you for ordering from Fudgio 💛</p></body></html>');

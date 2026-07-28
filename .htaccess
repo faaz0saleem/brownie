@@ -23,17 +23,33 @@ RewriteRule ^(.+?)/?$ $1.html [L]
 DirectoryIndex index.html index.php
 
 # --- Protect sensitive files ---
-<FilesMatch "(^\.env|\.(git|md|lock)$|package(-lock)?\.json$)">
+<FilesMatch "(^\.env|^\.|\.(git|md|lock|sqlite|db|ini|log|bak|sql|yml|yaml)$|package(-lock)?\.json$)">
   Require all denied
 </FilesMatch>
 RedirectMatch 404 /\.env
-RedirectMatch 404 ^/(src|node_modules)/
+RedirectMatch 404 ^/(src|node_modules|data|\.git|scripts|tests)/
+# Block anything trying to reach the SQLite data file directly.
+RedirectMatch 404 \.sqlite$
+
+# --- Block obvious probe traffic / injection attempts in the query string ---
+RewriteCond %{QUERY_STRING} (\.\./|<script|%3Cscript|union[\s+]+select|base64_decode\() [NC]
+RewriteRule .* - [F,L]
+# Common WordPress/PHP scanner paths — this site has none of them.
+RewriteRule ^(wp-admin|wp-login|wp-content|wp-includes|xmlrpc\.php|phpmyadmin|\.env\.) - [F,L,NC]
 
 # --- Security headers ---
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  # Content Security Policy. The pages use inline <script>/<style> blocks, so
+  # 'unsafe-inline' is required; no external scripts are allowed at all.
+  Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline' https://www.google.com https://www.gstatic.com; connect-src 'self'; frame-src https://www.google.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+  Header unset X-Powered-By
+  Header always unset Server
   <FilesMatch "index\.html$">
     Header always set Cache-Control "no-store, must-revalidate"
   </FilesMatch>
