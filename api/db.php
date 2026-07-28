@@ -312,21 +312,30 @@ function order_create(array $items, array $customer, ?string $userId): array {
     if ((int)$st->fetch()['c'] > 0) return ['error' => 'We could not place this order right now. Please try again later.'];
   } catch (Throwable $e) {}
 
-  // Per-IP throttle so one machine cannot place many orders with different details.
+  // Per-IP cap so one machine cannot place many orders with different details.
+  // Only *placed* orders count (the hit is recorded at the end of this function),
+  // otherwise a customer who mistypes their address a few times would lock
+  // themselves out. The limit is generous because mobile carriers here put a lot
+  // of real customers behind the same IP.
   $ip = function_exists('client_ip') ? client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '');
-  if ($ip !== '') {
-    if (rate_count('order:' . $ip, $hour) >= 3)
-      return ['error' => 'We could not place this order right now. Please try again later.'];
-    rate_hit('order:' . $ip, $ip);
-  }
+  if ($ip !== '' && rate_count('order:' . $ip, $hour) >= (int) env('MAX_ORDERS_PER_IP', '8'))
+    return ['error' => 'We could not place this order right now. Please try again later.'];
 
   // Bulk-order guards: cap per-line quantity, total units and order value.
   $maxPerLine  = (int) env('MAX_QTY_PER_ITEM', '20');
   $maxUnits    = (int) env('MAX_UNITS_PER_ORDER', '30');
   $maxValue    = (int) env('MAX_ORDER_VALUE', '50000');
   $totalUnits  = 0;
+  if (count($items) > 30) return ['error' => 'That is too many different items for one online order.'];
   foreach ($items as $it) {
-    $q = max(1, (int)($it['qty'] ?? 1));
+    // Quantities must be whole numbers of at least 1. Anything else (0, a
+    // negative, a decimal, a string) is a broken or tampered request, not a
+    // number to silently round up.
+    $raw = $it['qty'] ?? 1;
+    if (!is_int($raw) && !(is_string($raw) && ctype_digit($raw)) && !(is_float($raw) && floor($raw) == $raw))
+      return ['error' => 'Please choose a valid quantity.'];
+    $q = (int) $raw;
+    if ($q < 1) return ['error' => 'Please choose a valid quantity.'];
     if ($q > $maxPerLine) return ['error' => "For large orders please contact us directly — maximum $maxPerLine per item online."];
     $totalUnits += $q;
   }
@@ -394,8 +403,14 @@ function order_create(array $items, array $customer, ?string $userId): array {
   ]);
   if (!$userId) { db()->prepare("UPDATE orders SET user_id=? WHERE id=?")->execute([$user['id'],$order['id']]); $order['userId']=$user['id']; }
 
-  // The confirmation is single-use: the next order needs a fresh code.
-  try { db()->prepare("UPDATE email_otp SET verified_at=NULL WHERE email=?")->execute([$email]); } catch (Throwable $e) {}
+  // The confirmation is single-use. Expire the code as well as the confirmation,
+  // otherwise anyone holding the old code could simply replay it.
+  try {
+    db()->prepare("UPDATE email_otp SET verified_at=NULL, code_hash='', expires_at=0 WHERE email=?")
+       ->execute([$email]);
+  } catch (Throwable $e) {}
+  // Count this IP only now that an order really exists.
+  if ($ip !== '') rate_hit('order:' . $ip, $ip);
 
   notify_order($order);
   return ['order' => $order];
@@ -560,8 +575,9 @@ function otp_send(string $email, string $ip): array {
     if ((int)$row['sends'] >= 8 && $now - (int)$row['created_at'] < 86400000)
       return ['error' => 'Too many codes requested for this address. Please try again later.'];
   }
-  // Per-IP cap so one machine cannot spray codes at many addresses.
-  if (rate_count('otp:' . $ip, 3600000) >= 15)
+  // Per-IP cap so one machine cannot spray codes at many addresses. Kept high
+  // because many genuine customers share a carrier IP.
+  if (rate_count('otp:' . $ip, 3600000) >= (int) env('MAX_CODES_PER_IP', '40'))
     return ['error' => 'Too many verification attempts. Please try again later.'];
   rate_hit('otp:' . $ip, $ip);
 

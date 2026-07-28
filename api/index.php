@@ -150,7 +150,10 @@ try {
   // ---- orders (customer create + admin) ----
   if ($seg[0]==='orders') {
     if (count($seg)===1 && $method==='POST') {
-      throttle('orderpost', 12, 3600000);
+      // Flood guard only. Real customers retry after validation errors, and
+      // whole neighbourhoods share one carrier IP, so keep this well above the
+      // per-email and per-phone rules that do the actual work.
+      throttle('orderpost', 60, 3600000);
       $b=body(); $u=current_user();
       $cust=$b['customer']??[]; if($u && empty($cust['email'])) $cust['email']=$u['email'];
       $r=order_create($b['items']??[], $cust, $u['id']??null);

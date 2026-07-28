@@ -24,6 +24,41 @@ var PRODUCTS = [
 function getProduct(slug){ for(var i=0;i<PRODUCTS.length;i++) if(PRODUCTS[i].slug===slug) return PRODUCTS[i]; return null; }
 function fromPrice(p){ return Math.min.apply(null, p.sizes.map(function(s){return s.price;})); }
 
+/* ---- Live stock & prices from the admin ----------------------------------
+   The catalog above renders instantly so the page is never blank, then this
+   layers the real numbers on top. Without it the admin's "out of stock" switch
+   would have no effect on the shop and a customer could reach checkout with a
+   brownie we cannot bake. `stock` is undefined until this resolves, and
+   inStock() treats undefined as available so nothing is hidden by mistake. */
+function inStock(p){ return !p || p.stock === undefined || p.stock > 0; }
+function loadLiveStock(done){
+  var finish = function(){ if(done) done(); };
+  try{
+    var x = new XMLHttpRequest();
+    x.open('GET','/api/products',true);
+    x.timeout = 6000;
+    x.onload = function(){
+      try{
+        var rows = JSON.parse(x.responseText);
+        if(Object.prototype.toString.call(rows) === '[object Array]'){
+          var live = {};
+          rows.forEach(function(r){ live[r.slug] = r; });
+          PRODUCTS.forEach(function(p){
+            var r = live[p.slug];
+            if(!r){ p.stock = 0; return; }          // withdrawn from the catalog
+            p.stock = Number(r.stock);
+            if(r.active === false) p.stock = 0;      // hidden by the admin
+            if(r.sizes && r.sizes.length) p.sizes = r.sizes;
+          });
+        }
+      }catch(e){}
+      finish();
+    };
+    x.onerror = finish; x.ontimeout = finish;
+    x.send();
+  }catch(e){ finish(); }
+}
+
 function money(n){ return FUDGIO.currency + ' ' + Number(n).toLocaleString('en-US'); }
 function getCart(){ try{ return JSON.parse(localStorage.getItem('fudgio_cart')||'[]'); }catch(e){ return []; } }
 function saveCart(c){ localStorage.setItem('fudgio_cart', JSON.stringify(c)); updateCount(); }
@@ -120,19 +155,31 @@ var FUDGIO_SLOGAN = 'Life is short. Eat the brownie. 🍫 Handcrafted brownies, 
 function quickAdd(ev, slug){
   ev.preventDefault(); ev.stopPropagation();
   var p=getProduct(slug); if(!p) return;
+  if(!inStock(p)){ toast(p.name+' is sold out right now'); return; }
   var s=p.sizes[0];
   addToCart(p, s.label, s.price, 1);
 }
 
 /* ---- Render a product card (shared by home & menu) ---- */
 function productCardHTML(p){
-  return '<a class="card" href="/product?b='+p.slug+'">'
+  var out = !inStock(p);
+  return '<a class="card'+(out?' is-sold-out':'')+'" href="/product?b='+p.slug+'">'
     +'<div class="card-art" style="background:'+p.gradient+'">'
     +(p.featured?'<span class="fav">★ Signature</span>':'')
     +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
     +'<span>'+p.emoji+'</span>'
-    +'<button class="quick-add" onclick="quickAdd(event,\''+p.slug+'\')">+ Quick add</button>'
+    +(out?'<span class="sold-out-flag">Sold out</span>'
+         :'<button class="quick-add" onclick="quickAdd(event,\''+p.slug+'\')">+ Quick add</button>')
     +'</div>'
     +'<div class="card-body"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div>'
-    +'<div class="card-foot"><div class="price">from '+money(fromPrice(p))+'</div><span class="card-btn">Choose →</span></div></div></a>';
+    +'<div class="card-foot"><div class="price">'+(out?'Sold out':'from '+money(fromPrice(p)))+'</div>'
+    +'<span class="card-btn">'+(out?'See details →':'Choose →')+'</span></div></div></a>';
+}
+
+/* Render the grid now, then re-render once real stock arrives. */
+function renderGrid(id){
+  var el=document.getElementById(id); if(!el) return;
+  var paint=function(){ el.innerHTML = PRODUCTS.map(productCardHTML).join(''); };
+  paint();
+  loadLiveStock(paint);
 }

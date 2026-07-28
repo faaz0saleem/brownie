@@ -10,7 +10,10 @@
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"/>
 <meta name="theme-color" content="#d98e4a"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<!-- Fonts must not block rendering: the brownie list is drawn by JS that runs
+     after this tag, so a slow font CDN would leave customers on an empty menu. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
 <link rel="stylesheet" href="/assets/store.css"/>
 </head>
 <body>
@@ -23,6 +26,19 @@
 <main class="page"><div class="wrap">
   <div class="crumbs"><a href="/">Home</a> › <a href="/menu">Menu</a> ›<span class="on" id="crumbName">Brownie</span></div>
   <div id="root"></div>
+  <noscript>
+    <!-- Without JavaScript we can't tell which brownie was requested, so show them all. -->
+    <div class="panel" style="margin-top:18px">
+      <h3>Our brownies</h3>
+      <p style="color:var(--cream-dim);margin-bottom:14px">Handcrafted in small batches from our secret recipe. Cash on Delivery across Lahore.</p>
+      <ul style="line-height:2;padding-left:18px">
+        <li><strong>Classic Chocolate</strong> &mdash; from Rs 190. Contains gluten, dairy, eggs, soy.</li>
+        <li><strong>Nutty Delight</strong> &mdash; from Rs 220. <strong>Contains nuts</strong> (walnut, hazelnut) &mdash; please avoid if you have a nut allergy.</li>
+        <li><strong>Salted Caramel</strong> &mdash; from Rs 220. Contains gluten, dairy, eggs, soy.</li>
+      </ul>
+      <p style="margin-top:14px">Please enable JavaScript to choose a size and order, or <a href="/contact" style="color:var(--accent)">contact us</a>.</p>
+    </div>
+  </noscript>
 </div></main>
 
 <footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
@@ -76,6 +92,24 @@ else {
   document.getElementById('bbBuy').onclick=function(){ addToCart(p,state.size,state.price,state.qty); location.href='/checkout'; };
   var _sync=sync;
   sync=function(){ _sync(); var e=document.getElementById('bbPrice'); if(e) e.textContent=money(state.price*state.qty); };
+
+  // Reflect real stock from the admin: nobody should be able to fill in a whole
+  // checkout, verify their email and only then be told we've sold out.
+  loadLiveStock(function(){
+    var live=getProduct(slug); if(!live) return;
+    var note=document.querySelector('.stock-note');
+    if(!inStock(live)){
+      if(note){ note.className='stock-note out'; note.innerHTML='😔 <strong>Out of stock</strong> — this one has sold out. It will be back soon.'; }
+      ['add','buy','bbAdd','bbBuy'].forEach(function(id){
+        var el=document.getElementById(id); if(!el) return;
+        el.disabled=true; el.title='Out of stock';
+      });
+      document.getElementById('add').innerHTML='Out of stock';
+      document.getElementById('buy').innerHTML='Out of stock';
+    } else if(note && live.stock !== undefined && live.stock <= 10){
+      note.innerHTML='🔥 <strong>Only '+live.stock+' left</strong> — baked fresh to order';
+    }
+  });
 }
 updateCount();
 </script>

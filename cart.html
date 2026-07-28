@@ -10,7 +10,10 @@
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"/>
 <meta name="theme-color" content="#d98e4a"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<!-- Fonts must not block rendering: the brownie list is drawn by JS that runs
+     after this tag, so a slow font CDN would leave customers on an empty menu. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
 <link rel="stylesheet" href="/assets/store.css"/>
 </head>
 <body>
@@ -37,8 +40,12 @@ document.getElementById('yr').textContent=new Date().getFullYear();
 function render(){
   var cart=getCart(), root=document.getElementById('root');
   if(!cart.length){ root.innerHTML='<div class="empty"><div class="em">🛒</div><p>Your cart is empty.</p><a href="/#menu" class="btn btn-primary" style="margin-top:18px">Browse the menu</a></div>'; updateCount(); return; }
-  var items=cart.map(function(i){return '<div class="line"><div class="art" style="background:'+i.gradient+'">'+i.emoji+'</div>'
-    +'<div class="info"><h4>'+i.name+'</h4><div class="meta">'+(i.size||'')+' · '+money(i.price)+' each</div>'
+  var items=cart.map(function(i){
+    // A brownie can sell out while the cart sits open — say so here rather than
+    // letting the customer discover it at the end of checkout.
+    var p=getProduct(i.id), out=!inStock(p);
+    return '<div class="line'+(out?' is-sold-out':'')+'"><div class="art" style="background:'+i.gradient+'">'+i.emoji+'</div>'
+    +'<div class="info"><h4>'+i.name+(out?' <span class="sold-out-pill">Sold out</span>':'')+'</h4><div class="meta">'+(i.size||'')+' · '+money(i.price)+' each</div>'
     +'<div class="stepper"><button onclick="chg(\''+i.key+'\',-1)">−</button><span>'+i.qty+'</span><button onclick="chg(\''+i.key+'\',1)">+</button></div></div>'
     +'<div class="right"><div class="p">'+money(i.price*i.qty)+'</div><button class="rm" onclick="rm(\''+i.key+'\')">Remove</button></div></div>';}).join('');
   root.innerHTML='<div class="split"><div class="panel"><h3>Items ('+cartQty()+')</h3>'+items+'</div>'
@@ -47,13 +54,18 @@ function render(){
     +'<div class="srow"><span>Delivery</span><span>'+(cartDelivery()===0?'FREE':money(cartDelivery()))+'</span></div>'
     +'<div class="srow tot"><span>Total</span><span>'+money(cartTotal())+'</span></div>'
     +'<div class="cod">💵 Cash on Delivery only</div>'
-    +'<a href="/checkout" class="btn btn-primary btn-block">Proceed to checkout →</a>'
+    +(cartHasSoldOut()
+        ? '<div class="err" style="text-align:center">Please remove the sold-out item to continue.</div>'
+          +'<button class="btn btn-primary btn-block" disabled>Proceed to checkout →</button>'
+        : '<a href="/checkout" class="btn btn-primary btn-block">Proceed to checkout →</a>')
     +'<a href="/#menu" class="btn btn-ghost btn-block" style="margin-top:10px">Add more brownies</a></div></div>';
   updateCount();
 }
+function cartHasSoldOut(){ return getCart().some(function(i){ return !inStock(getProduct(i.id)); }); }
 function chg(key,d){ var c=getCart(); var it=c.filter(function(i){return i.key===key;})[0]; if(!it)return; it.qty+=d; if(it.qty<=0)c=c.filter(function(i){return i.key!==key;}); saveCart(c); render(); }
 function rm(key){ saveCart(getCart().filter(function(i){return i.key!==key;})); render(); toast('Removed'); }
 render();
+loadLiveStock(render);   // repaint once real stock arrives
 </script>
 </body>
 </html>

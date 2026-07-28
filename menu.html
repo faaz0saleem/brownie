@@ -10,7 +10,10 @@
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"/>
 <meta name="theme-color" content="#d98e4a"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet"/>
+<!-- Fonts must not block rendering: the brownie list is drawn by JS that runs
+     after this tag, so a slow font CDN would leave customers on an empty menu. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
 <link rel="stylesheet" href="/assets/store.css"/>
 </head>
 <body>
@@ -28,6 +31,21 @@
     <p style="margin-left:0">Each brownie is baked in small batches from our secret recipe. Pick a flavour to choose your box size and quantity.</p>
   </div>
   <div class="grid" id="grid"></div>
+  <noscript>
+    <!-- Crawlers and link previews that don't run JavaScript still get the menu. -->
+    <div class="grid">
+      <a class="card" href="/product?b=chocolate"><div class="card-art" style="background:linear-gradient(135deg,#5b3a29,#2b1a12)"><span>&#127851;</span></div>
+        <div class="card-body"><h3>Classic Chocolate</h3><div class="tagline">The original, impossibly fudgy</div>
+        <div class="card-foot"><div class="price">from Rs 190</div><span class="card-btn">Choose &rarr;</span></div></div></a>
+      <a class="card" href="/product?b=nutty-delight"><div class="card-art" style="background:linear-gradient(135deg,#6d4c2f,#3a2417)"><span>&#127792;</span></div>
+        <div class="card-body"><h3>Nutty Delight</h3><div class="tagline">Loaded with toasted nuts &mdash; contains nuts</div>
+        <div class="card-foot"><div class="price">from Rs 220</div><span class="card-btn">Choose &rarr;</span></div></div></a>
+      <a class="card" href="/product?b=salted-caramel"><div class="card-art" style="background:linear-gradient(135deg,#a06a34,#3b230f)"><span>&#127855;</span></div>
+        <div class="card-body"><h3>Salted Caramel</h3><div class="tagline">Sweet, salty, unforgettable</div>
+        <div class="card-foot"><div class="price">from Rs 220</div><span class="card-btn">Choose &rarr;</span></div></div></a>
+    </div>
+  </noscript>
+
 </div></main>
 
 <footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
@@ -36,7 +54,7 @@
 <script src="/assets/store.js"></script>
 <script>
 document.getElementById('yr').textContent=new Date().getFullYear();
-document.getElementById('grid').innerHTML = PRODUCTS.map(productCardHTML).join('');
+renderGrid('grid');
 updateCount();
 </script>
 </body>

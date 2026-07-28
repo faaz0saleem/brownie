@@ -399,3 +399,23 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .split{min-width:0}
 .split > *{min-width:0}
 .panel{min-width:0}
+
+/* ---- Sold-out state on the shop cards ----
+   Selectors are scoped under .card-art because the generic `.card-art>span`
+   rules above are more specific than a bare class and would otherwise win. */
+.card.is-sold-out .card-art{filter:grayscale(.55) brightness(.92)}
+.card.is-sold-out .card-art>span:not(.sold-out-flag){opacity:.5}
+.card.is-sold-out .price{color:var(--cream-faint)}
+.card-art .sold-out-flag{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;
+  background:rgba(46,28,18,.86);color:#ffe9cd;font-weight:800;font-size:.82rem;
+  letter-spacing:1.5px;text-transform:uppercase;padding:8px 16px;border-radius:999px;
+  border:1px solid rgba(255,233,205,.35);filter:none;
+}
+/* the hover wiggle is for the brownie emoji, not the badge */
+.card:hover .card-art>span.sold-out-flag{transform:translate(-50%,-50%)}
+.stock-note.out{color:#b3261e}
+.btn[disabled]{filter:grayscale(.5)}
+.line.is-sold-out .art{filter:grayscale(.6);opacity:.6}
+.sold-out-pill{display:inline-block;margin-left:8px;font-size:.68rem;font-weight:800;letter-spacing:1px;
+  text-transform:uppercase;color:#b3261e;background:#fde7e5;border:1px solid #f3c2bd;border-radius:999px;padding:2px 9px;vertical-align:middle}
