@@ -3,11 +3,22 @@
 This guide takes Fudgio from code to a real store selling brownies at **fudgio.com**,
 with the admin at **admin.fudgio.com**.
 
-> ⚠️ **Before anything else — security**
-> - The database password you shared in chat should be treated as **compromised**. Rotate it in
->   Google Cloud → SQL → *fudgio* → **Users** and put the new one only in `.env` (never in git).
-> - Never commit `.env`. It is already git-ignored.
-> - Generate a strong `COOKIE_SECRET` and a strong `ADMIN_TOKEN` (see below).
+> 🚨 **Before anything else — rotate these two passwords**
+>
+> This repository is **public**, and commit `8400dfc` put both the mailbox
+> password and the database password into `.env`, which is committed. Anyone
+> who reads the repo can see them, and they stay in the git history even after
+> the file is changed.
+>
+> 1. **Mailbox password** — hPanel → **Emails** → `faaz.saleem@fudgio.com` →
+>    change password. (It is the same string as the admin password, so change
+>    that too: `ADMIN_TOKEN`.)
+> 2. **Cloud SQL password** — Google Cloud → SQL → *fudgio* → **Users**.
+> 3. Put the new values in **`public_html/.env.local`** on the server (see
+>    below) — never in `.env`.
+>
+> Making the repository private limits further exposure but does not undo it;
+> rotating is what actually fixes it.
 
 ---
 
@@ -19,16 +30,19 @@ authenticated SMTP, so the store cannot accept orders until this is filled in.
 
 1. In hPanel → **Emails**, make sure the mailbox `faaz.saleem@fudgio.com` exists
    and you know its password.
-2. Open **hPanel → File Manager → `public_html/.env`** and set:
+2. Create **`public_html/.env.local`** (hPanel → File Manager → New File) with
+   just the password:
 
    ```
-   SMTP_HOST=smtp.hostinger.com
-   SMTP_PORT=587
-   SMTP_SECURE=tls
-   SMTP_USER=faaz.saleem@fudgio.com
-   SMTP_PASS=<the mailbox password>      # server only — never commit this
-   SMTP_FROM=faaz.saleem@fudgio.com
+   SMTP_PASS=<the mailbox password>
    ```
+
+   Everything else (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`,
+   `SMTP_FROM`) is already in the committed `.env`.
+
+   > **Never put a password in `.env`.** That file is committed, this
+   > repository is public, and every git deploy overwrites it on the server.
+   > `.env.local` is git-ignored, is never deployed, and overrides `.env`.
 
 3. Test it: open the checkout, type your own email, press **Verify**. The code
    should arrive within a minute. Check the spam folder the first time — the
@@ -39,6 +53,19 @@ authenticated SMTP, so the store cannot accept orders until this is filled in.
 
 If `SMTP_PASS` is blank the code falls back to PHP `mail()`, which most shared
 hosts either block or deliver straight to spam — so set it properly.
+
+### Switching to Cloud SQL
+
+Same file. The site stays on the safe SQLite store until **`DB_HOST`** is set —
+setting `DB_PASSWORD` on its own does nothing. Add both to `.env.local`:
+
+```
+DB_HOST=<the Cloud SQL public IP>
+DB_PASSWORD=<the database password>
+```
+
+Check it took effect at `https://fudgio.com/api/health` — `driver` should read
+`mysql` instead of `sqlite`.
 
 ---
 

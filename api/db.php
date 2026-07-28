@@ -5,26 +5,37 @@
 declare(strict_types=1);
 require_once __DIR__ . '/mailer.php';
 
-/* ---------------- .env loader (shares the project's .env) ---------------- */
+/* ---------------- .env loader ----------------------------------------------
+   Two files, read in order:
+
+     .env        committed, deploys with the site, MUST hold no passwords.
+     .env.local  server only, git-ignored, never deployed — put secrets here.
+
+   .env.local wins. It exists because .env is tracked: a password written into
+   .env is published to the repository, and every git deploy overwrites .env on
+   the server anyway. .env.local is untouched by deploys.                     */
+function env_read_file(string $file, array $env): array {
+  if (!is_file($file)) return $env;
+  foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+    $line = trim($line);
+    if ($line === '' || $line[0] === '#') continue;
+    $eq = strpos($line, '=');
+    if ($eq === false) continue;
+    $k = trim(substr($line, 0, $eq));
+    $v = trim(substr($line, $eq + 1));
+    if ((str_starts_with($v, '"') && str_ends_with($v, '"')) ||
+        (str_starts_with($v, "'") && str_ends_with($v, "'"))) $v = substr($v, 1, -1);
+    if ($v !== '') $env[$k] = $v;      // a blank line never wipes a real value
+    elseif (!array_key_exists($k, $env)) $env[$k] = '';
+  }
+  return $env;
+}
 function env_all(): array {
   static $env = null;
   if ($env !== null) return $env;
-  $env = [];
-  $file = __DIR__ . '/../.env';
-  if (is_file($file)) {
-    foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
-      $line = trim($line);
-      if ($line === '' || $line[0] === '#') continue;
-      $eq = strpos($line, '=');
-      if ($eq === false) continue;
-      $k = trim(substr($line, 0, $eq));
-      $v = trim(substr($line, $eq + 1));
-      if ((str_starts_with($v, '"') && str_ends_with($v, '"')) ||
-          (str_starts_with($v, "'") && str_ends_with($v, "'"))) $v = substr($v, 1, -1);
-      $env[$k] = $v;
-    }
-  }
-  // Real environment variables win over the file.
+  $env = env_read_file(__DIR__ . '/../.env', []);
+  $env = env_read_file(__DIR__ . '/../.env.local', $env);
+  // Real environment variables win over both files.
   foreach ($env as $k => $_) { $r = getenv($k); if ($r !== false) $env[$k] = $r; }
   return $env;
 }
