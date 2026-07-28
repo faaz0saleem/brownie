@@ -40,17 +40,21 @@ function loadLiveStock(done){
     x.onload = function(){
       try{
         var rows = JSON.parse(x.responseText);
-        if(Object.prototype.toString.call(rows) === '[object Array]'){
-          var live = {};
-          rows.forEach(function(r){ live[r.slug] = r; });
-          PRODUCTS.forEach(function(p){
-            var r = live[p.slug];
-            if(!r){ p.stock = 0; return; }          // withdrawn from the catalog
-            p.stock = Number(r.stock);
-            if(r.active === false) p.stock = 0;      // hidden by the admin
-            if(r.sizes && r.sizes.length) p.sizes = r.sizes;
-          });
-        }
+        // Only trust a well-formed, non-empty catalog. Anything else is left
+        // alone: showing the brownies we know about beats greying out the whole
+        // menu because one response came back odd.
+        if(Object.prototype.toString.call(rows) !== '[object Array]' || !rows.length) return finish();
+        var live = {}, matched = 0;
+        rows.forEach(function(r){ if(r && r.slug) live[r.slug] = r; });
+        PRODUCTS.forEach(function(p){ if(live[p.slug]) matched++; });
+        if(!matched) return finish();      // slugs don't line up — don't guess
+        PRODUCTS.forEach(function(p){
+          var r = live[p.slug];
+          if(!r) return;                                       // leave as-is
+          if(r.active === false){ p.stock = 0; return; }        // hidden by the admin
+          if(r.stock !== undefined && r.stock !== null && !isNaN(Number(r.stock))) p.stock = Number(r.stock);
+          if(r.sizes && r.sizes.length) p.sizes = r.sizes;
+        });
       }catch(e){}
       finish();
     };

@@ -583,7 +583,7 @@ function otp_send(string $email, string $ip): array {
   if ($row) {
     if ($row['last_sent'] !== null && $now - (int)$row['last_sent'] < 45000)
       return ['error' => 'Please wait a moment before requesting another code.'];
-    if ((int)$row['sends'] >= 8 && $now - (int)$row['created_at'] < 86400000)
+    if ((int)$row['sends'] >= (int) env('MAX_CODES_PER_EMAIL', '15') && $now - (int)$row['created_at'] < 86400000)
       return ['error' => 'Too many codes requested for this address. Please try again later.'];
   }
   // Per-IP cap so one machine cannot spray codes at many addresses. Kept high

@@ -36,29 +36,63 @@ function smtp_cmd($fp, string $cmd, string $expect = ''): string {
   return smtp_line($fp, $expect);
 }
 
+/** Deliver with PHP's mail(). Works on most shared hosts for a domain they host. */
+function php_mail_send(string $to, string $subject, string $text, string $html = ''): array {
+  $c = smtp_config();
+  $from = $c['from'] ?: 'noreply@fudgio.com';
+  $headers = 'From: ' . $c['name'] . ' <' . $from . ">\r\n"
+           . 'Reply-To: ' . $from . "\r\n"
+           . "MIME-Version: 1.0\r\n"
+           . 'Content-Type: text/' . ($html !== '' ? 'html' : 'plain') . '; charset=UTF-8';
+  $ok = @mail($to, $subject, $html !== '' ? $html : $text, $headers, '-f' . $from);
+  return [(bool) $ok, $ok ? '' : 'PHP mail() returned false (the host may block it).'];
+}
+
 /**
  * Send an email. Returns [ok(bool), error(string)].
- * Uses authenticated SMTP when configured, otherwise falls back to PHP mail().
+ *
+ * Tries authenticated SMTP first, then the same server on the alternate
+ * port/encryption, then PHP mail(). Shared hosts block outbound 587 or 465
+ * fairly often and present certificates that don't match, so a single attempt
+ * is not enough to rely on for something as important as a checkout code.
  */
 function send_mail(string $to, string $subject, string $text, string $html = ''): array {
-  $c = smtp_config();
+  if (!smtp_ready()) return php_mail_send($to, $subject, $text, $html);
 
-  if (!smtp_ready()) {
-    // Fallback: unauthenticated PHP mail (works on some hosts, often lands in spam)
-    $headers = "From: {$c['name']} <{$c['from']}>\r\n"
-             . "Reply-To: {$c['from']}\r\n"
-             . "MIME-Version: 1.0\r\n"
-             . "Content-Type: text/plain; charset=UTF-8";
-    $ok = @mail($to, $subject, $text, $headers);
-    return [$ok, $ok ? '' : 'SMTP is not configured and PHP mail() failed.'];
+  $c = smtp_config();
+  $secure = strtolower($c['secure']);
+  // Attempt list: what's configured, then the usual alternative.
+  $attempts = [[$c['port'], $secure]];
+  if ((int) $c['port'] === 587) $attempts[] = [465, 'ssl'];
+  elseif ((int) $c['port'] === 465) $attempts[] = [587, 'tls'];
+
+  $errors = [];
+  foreach ($attempts as [$port, $enc]) {
+    [$ok, $err] = smtp_send($to, $subject, $text, $html, (int) $port, $enc);
+    if ($ok) return [true, ''];
+    $errors[] = "port $port/" . ($enc ?: 'plain') . ': ' . $err;
   }
 
-  $secure = strtolower($c['secure']);
-  $host   = ($secure === 'ssl' || $c['port'] === 465) ? 'ssl://' . $c['host'] : $c['host'];
+  // Last resort so a customer is never stuck without their code.
+  [$ok, $err] = php_mail_send($to, $subject, $text, $html);
+  if ($ok) { error_log('Fudgio: SMTP failed, delivered via mail(). ' . implode(' | ', $errors)); return [true, '']; }
+  return [false, implode(' | ', $errors) . ' | mail(): ' . $err];
+}
 
-  $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true]]);
-  $fp = @stream_socket_client($host . ':' . $c['port'], $errno, $errstr, 20, STREAM_CLIENT_CONNECT, $ctx);
-  if (!$fp) return [false, "Could not connect to mail server ({$errstr})"];
+/** One SMTP delivery attempt against a specific port/encryption. */
+function smtp_send(string $to, string $subject, string $text, string $html, int $port, string $secure): array {
+  $c = smtp_config();
+  $host = ($secure === 'ssl' || $port === 465) ? 'ssl://' . $c['host'] : $c['host'];
+
+  // Hostinger and similar shared hosts frequently serve a certificate that
+  // doesn't match the mail hostname. The credentials still travel encrypted;
+  // set SMTP_STRICT_TLS=true to demand a verified certificate instead.
+  $strict = env('SMTP_STRICT_TLS', 'false') === 'true';
+  $ctx = stream_context_create(['ssl' => [
+    'verify_peer' => $strict, 'verify_peer_name' => $strict, 'allow_self_signed' => !$strict,
+  ]]);
+  $fp = @stream_socket_client($host . ':' . $port, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
+  if (!$fp) return [false, "cannot connect ({$errstr})"];
   stream_set_timeout($fp, 20);
 
   try {
@@ -66,7 +100,7 @@ function send_mail(string $to, string $subject, string $text, string $html = '')
     $ehlo = 'fudgio.com';
     smtp_cmd($fp, "EHLO $ehlo", '250');
 
-    if ($secure === 'tls' && $c['port'] !== 465) {
+    if ($secure === 'tls' && $port !== 465) {
       smtp_cmd($fp, 'STARTTLS', '220');
       $crypto = STREAM_CRYPTO_METHOD_TLS_CLIENT;
       if (defined('STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT')) $crypto |= STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;

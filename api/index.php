@@ -97,6 +97,61 @@ try {
     out(['ok'=>true]);
   }
 
+  // ---- mail diagnostics (admin only) ----
+  // /api/diag/mail?token=<admin password>&to=you@example.com
+  // Reports what the mail settings look like and the real error from every
+  // delivery attempt, so a failing code send can be fixed instead of guessed at.
+  if ($seg[0]==='diag' && ($seg[1]??'')==='mail') {
+    require_admin();
+    $c = smtp_config();
+    $r = [
+      'smtpHost'    => $c['host'] ?: '(not set)',
+      'smtpPort'    => $c['port'],
+      'smtpSecure'  => $c['secure'],
+      'smtpUser'    => $c['user'] ?: '(not set)',
+      'smtpFrom'    => $c['from'] ?: '(not set)',
+      'passwordSet' => $c['pass'] !== '',      // never echo the password itself
+      'passwordLen' => strlen($c['pass']),
+      'smtpReady'   => smtp_ready(),
+      'envLocalFound' => is_file(dirname(__DIR__).'/.env.local'),
+      'phpMailAvailable' => function_exists('mail'),
+      'opensslLoaded'    => extension_loaded('openssl'),
+      'socketsAllowed'   => function_exists('stream_socket_client'),
+    ];
+    // Can we even open a socket to the mail server on each port?
+    foreach ([587, 465, 25] as $port) {
+      $t0 = microtime(true);
+      $fp = @stream_socket_client(($port===465?'ssl://':'').($c['host']?:'localhost').':'.$port, $e1, $e2, 8);
+      $r['reach'][$port] = $fp ? 'open in '.round((microtime(true)-$t0)*1000).'ms' : "blocked ($e2)";
+      if ($fp) fclose($fp);
+    }
+    // Why is a particular address being refused a code? (no code is revealed)
+    $who = strtolower(trim($_GET['email'] ?? ''));
+    if ($who !== '') {
+      $row = otp_row($who);
+      $r['address'] = $who;
+      $r['addressState'] = $row ? [
+        'codesSentToday' => (int) $row['sends'],
+        'secondsSinceLastSend' => $row['last_sent'] ? intdiv(now_ms() - (int)$row['last_sent'], 1000) : null,
+        'wrongAttempts' => (int) $row['attempts'],
+        'codeExpired' => now_ms() > (int) $row['expires_at'],
+        'currentlyVerified' => email_is_verified($who),
+      ] : 'no code has ever been requested for this address';
+      $r['codesFromThisIpLastHour'] = rate_count('otp:' . client_ip(), 3600000);
+    }
+
+    $to = trim($_GET['to'] ?? '');
+    if ($to !== '' && filter_var($to, FILTER_VALIDATE_EMAIL)) {
+      [$ok, $err] = send_mail($to, 'Fudgio test email', "If you are reading this, sending works.\n\n- Fudgio");
+      $r['testSendTo'] = $to;
+      $r['testSendOk'] = $ok;
+      $r['testSendError'] = $ok ? '' : $err;
+    } else {
+      $r['hint'] = 'Add &to=your@email.com to actually send a test message.';
+    }
+    out($r);
+  }
+
   // ---- email verification (checkout) ----
   if ($seg[0]==='verify') {
     $action = $seg[1] ?? '';
