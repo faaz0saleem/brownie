@@ -145,22 +145,85 @@ function db_init(PDO $pdo, string $driver): void {
   $count = (int) $pdo->query("SELECT COUNT(*) AS c FROM products")->fetch()['c'];
   if ($count === 0) db_seed($pdo);
 
-  // Migration: make sure every product offers a single-brownie option.
+  db_migrate($pdo);
+}
+
+/**
+ * Brings existing rows up to date with the current catalogue shape. Runs on
+ * every request, so it must be cheap and must converge: once a row matches,
+ * no UPDATE is issued and the whole thing is three SELECTed rows.
+ *
+ * Prices the admin has set are never overwritten — the migration only drops
+ * sizes we no longer sell and fills in ones that are missing.
+ */
+function db_migrate(PDO $pdo): void {
+  // Every brownie is sold exactly three ways, in this order.
+  $WANT = [
+    ['key' => 'single', 'label' => 'Single brownie', 'pieces' => 1],
+    ['key' => '6',      'label' => 'Box of 6',       'pieces' => 6],
+    ['key' => '9',      'label' => 'Box of 9',       'pieces' => 9],
+  ];
+  // Ratios taken from the seed prices, used only to invent a price for a size
+  // that does not exist yet. Anything already priced keeps its price.
+  $FROM_SIX = ['single' => 0.211, '6' => 1.0, '9' => 1.433];
+
+  /** Which of the three a stored label refers to, or null if we no longer sell it. */
+  $classify = function (string $label): ?string {
+    $l = strtolower($label);
+    if (strpos($l, 'single') !== false || strpos($l, '1 ') === 0) return 'single';
+    if (strpos($l, '6') !== false) return '6';
+    if (strpos($l, '9') !== false) return '9';
+    return null;
+  };
+
+  // The palette moved from browns to the brand's black/orange/pink. Only the
+  // known old values are replaced, so a gradient set in the admin survives.
+  $GRADIENTS = [
+    'chocolate'      => 'linear-gradient(135deg,#0b0a0a,#ff6a13)',
+    'nutty-delight'  => 'linear-gradient(135deg,#ff6a13,#ff2e88)',
+    'salted-caramel' => 'linear-gradient(135deg,#ff2e88,#0b0a0a)',
+  ];
+  $OLD_GRADIENTS = [
+    'linear-gradient(135deg,#5b3a29,#2b1a12)', 'linear-gradient(135deg, #5b3a29 0%, #2b1a12 100%)',
+    'linear-gradient(135deg,#6d4c2f,#3a2417)', 'linear-gradient(135deg, #6d4c2f 0%, #3a2417 100%)',
+    'linear-gradient(135deg,#a06a34,#3b230f)', 'linear-gradient(135deg, #a06a34 0%, #3b230f 100%)',
+  ];
+
   try {
-    $rows = $pdo->query("SELECT id, sizes FROM products")->fetchAll();
-    $upd = $pdo->prepare("UPDATE products SET sizes=? WHERE id=?");
+    $rows = $pdo->query("SELECT id, slug, sizes, price, gradient FROM products")->fetchAll();
+    $updSizes = $pdo->prepare("UPDATE products SET sizes=? WHERE id=?");
+    $updGrad  = $pdo->prepare("UPDATE products SET gradient=? WHERE id=?");
+
     foreach ($rows as $r) {
-      $sizes = json_decode($r['sizes'] ?? '[]', true) ?: [];
-      $has = false;
-      foreach ($sizes as $s) if (stripos($s['label'] ?? '', 'single') !== false) { $has = true; break; }
-      if (!$has && $sizes) {
-        $boxPrice = (int)($sizes[0]['price'] ?? 900);
-        $single = ['label' => 'Single brownie', 'price' => max(50, (int)round($boxPrice / 6 / 10) * 10 + 40)];
-        array_unshift($sizes, $single);
-        $upd->execute([json_encode($sizes), $r['id']]);
+      /* ---- sizes: exactly the three we sell ---- */
+      $current = json_decode($r['sizes'] ?? '[]', true) ?: [];
+      $priced  = [];
+      foreach ($current as $s) {
+        $key = $classify((string)($s['label'] ?? ''));
+        if ($key !== null && !isset($priced[$key])) $priced[$key] = (int)($s['price'] ?? 0);
+      }
+
+      // Work out a per-box-of-6 baseline to derive anything still missing.
+      $six = $priced['6']
+          ?? (isset($priced['single']) ? (int) round($priced['single'] / $FROM_SIX['single'])
+          :  (isset($priced['9'])      ? (int) round($priced['9']      / $FROM_SIX['9'])
+          :  max(1, (int)($r['price'] ?? 900))));
+
+      $next = [];
+      foreach ($WANT as $w) {
+        $price = $priced[$w['key']] ?? (int) (round($six * $FROM_SIX[$w['key']] / 10) * 10);
+        $next[] = ['label' => $w['label'], 'pieces' => $w['pieces'], 'price' => max(1, $price)];
+      }
+      // Only write when something actually changed, so this settles to a no-op.
+      if (json_encode($next) !== json_encode($current)) $updSizes->execute([json_encode($next), $r['id']]);
+
+      /* ---- gradient: retire the old brown pairs ---- */
+      $grad = trim((string)($r['gradient'] ?? ''));
+      if (isset($GRADIENTS[$r['slug']]) && ($grad === '' || in_array($grad, $OLD_GRADIENTS, true))) {
+        $updGrad->execute([$GRADIENTS[$r['slug']], $r['id']]);
       }
     }
-  } catch (Throwable $e) { /* non-fatal */ }
+  } catch (Throwable $e) { /* non-fatal: never block a page load on a migration */ }
 }
 
 function db_seed(PDO $pdo): void {
@@ -168,18 +231,18 @@ function db_seed(PDO $pdo): void {
   $catalog = [
     ['chocolate', 'Classic Chocolate', 'The original, impossibly fudgy',
      'Dense, gooey and deeply chocolatey with a crackly, paper-thin top. Made from our secret small-batch recipe using premium dark chocolate and real butter.',
-     900, 'linear-gradient(135deg,#5b3a29,#2b1a12)', '🍫',
-     [['label'=>'Single brownie','price'=>190],['label'=>'Box of 6','price'=>900],['label'=>'Box of 9','price'=>1290],['label'=>'Box of 12','price'=>1650]],
+     900, 'linear-gradient(135deg,#0b0a0a,#ff6a13)', '🍫',
+     [['label'=>'Single brownie','pieces'=>1,'price'=>190],['label'=>'Box of 6','pieces'=>6,'price'=>900],['label'=>'Box of 9','pieces'=>9,'price'=>1290]],
      ['Gluten (wheat)','Dairy','Eggs','Soy'], 0, 60, 0],
     ['nutty-delight', 'Nutty Delight', 'Loaded with toasted nuts',
      'A rich chocolate brownie packed with roasted walnuts and hazelnuts for a satisfying crunch in every bite. Made from our secret small-batch recipe.',
-     1050, 'linear-gradient(135deg,#6d4c2f,#3a2417)', '🌰',
-     [['label'=>'Single brownie','price'=>220],['label'=>'Box of 6','price'=>1050],['label'=>'Box of 9','price'=>1490],['label'=>'Box of 12','price'=>1920]],
+     1050, 'linear-gradient(135deg,#ff6a13,#ff2e88)', '🌰',
+     [['label'=>'Single brownie','pieces'=>1,'price'=>220],['label'=>'Box of 6','pieces'=>6,'price'=>1050],['label'=>'Box of 9','pieces'=>9,'price'=>1490]],
      ['Tree nuts (walnut, hazelnut)','Gluten (wheat)','Dairy','Eggs','Soy'], 1, 45, 1],
     ['salted-caramel', 'Salted Caramel', 'Sweet, salty, unforgettable',
      'Ribbons of golden salted caramel swirled through a fudgy chocolate brownie and finished with a pinch of flaky sea salt. Made from our secret small-batch recipe.',
-     1050, 'linear-gradient(135deg,#a06a34,#3b230f)', '🍯',
-     [['label'=>'Single brownie','price'=>220],['label'=>'Box of 6','price'=>1050],['label'=>'Box of 9','price'=>1490],['label'=>'Box of 12','price'=>1920]],
+     1050, 'linear-gradient(135deg,#ff2e88,#0b0a0a)', '🍯',
+     [['label'=>'Single brownie','pieces'=>1,'price'=>220],['label'=>'Box of 6','pieces'=>6,'price'=>1050],['label'=>'Box of 9','pieces'=>9,'price'=>1490]],
      ['Gluten (wheat)','Dairy','Eggs','Soy'], 0, 50, 2],
   ];
   $st = $pdo->prepare("INSERT INTO products
@@ -268,6 +331,19 @@ function product_create(array $d): array {
 }
 
 /* ---------------- orders ---------------- */
+/**
+ * Removes a product from the catalogue for good.
+ *
+ * Safe with respect to order history: order_create() snapshots the name,
+ * price, size and image of every line into the order itself, so past orders
+ * still render correctly once the product row is gone.
+ */
+function product_delete(string $id): bool {
+  $st = db()->prepare("DELETE FROM products WHERE id=?");
+  $st->execute([$id]);
+  return $st->rowCount() > 0;
+}
+
 function next_order_id(): string {
   db()->exec("UPDATE counters SET value = value + 1 WHERE name='orderSeq'");
   $v = db()->query("SELECT value FROM counters WHERE name='orderSeq'")->fetch()['value'];

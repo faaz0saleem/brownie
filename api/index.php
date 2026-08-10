@@ -78,10 +78,20 @@ try {
   }
   if ($path==='config') out(['statuses'=>['Pending','Confirmed','Baking','Out for Delivery','Delivered','Cancelled'],'currency'=>cfg()['currency']]);
 
-  // Public: the slogan / announcement shown on every storefront page.
-  if ($path==='announcement' && $method==='GET') {
+  // Public: everything the storefront needs to render correct totals.
+  // The delivery fee and free-delivery threshold live in the admin, and
+  // order_create() charges from those values — so the shop has to read them
+  // from here rather than hardcode a copy, or the cart would quote one total
+  // and the customer be charged another.
+  if (($path==='announcement' || $path==='storefront') && $method==='GET') {
     $s = settings_get();
-    out(['announcement' => $s['announcement'] ?? '']);
+    out([
+      'announcement'     => $s['announcement'] ?? '',
+      'storeOpen'        => (bool)($s['storeOpen'] ?? true),
+      'deliveryFee'      => (int)($s['deliveryFee'] ?? cfg()['deliveryFee']),
+      'freeDeliveryOver' => (int)($s['freeDeliveryOver'] ?? cfg()['freeDeliveryOver']),
+      'currency'         => cfg()['currency'],
+    ]);
   }
 
   // Public: record a page visit (fire-and-forget from the storefront).
@@ -188,6 +198,7 @@ try {
     $pid = $seg[1] ?? '';
     if (count($seg)===2 && $method==='GET') { $p=product_get($pid); $p?out($p):err('Not found',404); }
     if (count($seg)===2 && $method==='PATCH') { require_admin(); $p=product_update($pid, body()); $p?out($p):err('Not found',404); }
+    if (count($seg)===2 && $method==='DELETE') { require_admin(); product_delete($pid)?out(['ok'=>true]):err('Not found',404); }
     if (($seg[2]??'')==='image') {
       require_admin();
       if ($method==='PUT'){

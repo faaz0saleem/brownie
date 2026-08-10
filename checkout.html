@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon-192.png"/>
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png"/>
 <link rel="manifest" href="/site.webmanifest"/>
-<meta name="theme-color" content="#d98e4a"/>
+<meta name="theme-color" content="#ff6a13"/>
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="Fudgio"/>
 <meta property="og:title" content="Checkout | Fudgio"/>
@@ -37,12 +37,12 @@
      after this tag, so a slow font CDN would leave customers on an empty menu. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
-<link rel="stylesheet" href="/assets/store.css?v=46553c3e"/>
+<link rel="stylesheet" href="/assets/store.css?v=df706fa2"/>
 </head>
 <body>
 <header class="site-header"><div class="wrap nav">
   <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
-  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/about">About</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></nav>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/gifting">Gifting</a><a href="/bulk-orders">Bulk Orders</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
   <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
 </div></header>
 
@@ -54,14 +54,57 @@
   <div id="root"></div>
 </div></main>
 
-<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<footer class="site-footer"><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand">
+      <a href="/" class="brand" style="justify-content:flex-start"><span class="logo">🍫</span><span class="brand-name">Fudgio</span></a>
+      <p>Handcrafted, small-batch brownies baked fresh to order and delivered across Lahore. Cash on Delivery only.</p>
+    </div>
+    <div>
+      <h4>Shop</h4>
+      <a href="/menu">Our Menu</a>
+      <a href="/brownies/classic-chocolate">Classic Chocolate</a>
+      <a href="/brownies/nutty-delight">Nutty Delight</a>
+      <a href="/brownies/salted-caramel">Salted Caramel</a>
+      <a href="/gifting">Gift boxes</a>
+    </div>
+    <div>
+      <h4>Help</h4>
+      <a href="/track">Track your order</a>
+      <a href="/delivery">Delivery &amp; areas</a>
+      <a href="/ingredients">Ingredients &amp; allergens</a>
+      <a href="/faq">FAQ</a>
+      <a href="/about">Our story</a>
+    </div>
+    <div>
+      <h4>Get in touch</h4>
+      <a id="mail" href="#">Email us</a>
+      <a href="/bulk-orders">Bulk &amp; party orders</a>
+      <a href="/contact">Contact us</a>
+      <p style="color:rgba(255,255,255,.55);font-size:.86rem;margin-top:10px">🚚 Delivering across Lahore<br>💵 Cash on Delivery only</p>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <span>&copy; <span id="yr"></span> Fudgio. All rights reserved.</span>
+    <span>Handcrafted with 💛 in Lahore</span>
+  </div>
+</div></footer>
 <div class="toast" id="toast"></div>
 
-<script src="/assets/store.js?v=46553c3e"></script>
+<script src="/assets/store.js?v=df706fa2"></script>
 <script>
 document.getElementById('yr').textContent=new Date().getFullYear();
 function summaryHtml(){
-  var rows=getCart().map(function(i){return '<div class="srow"><span>'+i.qty+'× '+i.name+(i.size?' ('+i.size+')':'')+'</span><span>'+money(i.price*i.qty)+'</span></div>';}).join('');
+  // Thumbnails come from the live catalogue so an admin photo upload is
+  // reflected here too, not just on the menu.
+  var rows=getCart().map(function(i){
+    var p=getProduct(i.id);
+    var img=(p && p.image) || i.image;
+    var grad=(p && p.gradient) || i.gradient;
+    var thumb='<span class="sum-thumb" style="background:'+grad+'">'
+      +(img?'<img src="'+img+'" alt="" loading="lazy"/>':((p&&p.emoji)||i.emoji||''))+'</span>';
+    return '<div class="srow"><span class="sum-item">'+thumb+'<span>'+i.qty+'× '+i.name+(i.size?' ('+i.size+')':'')+'</span></span>'
+      +'<span>'+money(i.price*i.qty)+'</span></div>';}).join('');
   return '<div class="panel summary"><h3>Order summary</h3>'+rows
     +'<div class="srow" style="border-top:1px solid var(--line);padding-top:10px"><span>Subtotal</span><span>'+money(cartSubtotal())+'</span></div>'
     +'<div class="srow"><span>Delivery</span><span>'+(cartDelivery()===0?'FREE':money(cartDelivery()))+'</span></div>'
@@ -185,8 +228,14 @@ function render(){
     +'<div class="fg"><label>Delivery address *</label><textarea id="fAddr" rows="2" placeholder="House #, street, area"></textarea></div>'
     +'<div class="fg"><label>Notes (optional)</label><input id="fNotes" placeholder="Landmark, delivery time, etc."/></div>'
     +'<button class="btn btn-primary btn-block" id="place" onclick="place()">Place order (COD) 🍫</button></div>'
-    +summaryHtml()+'</div>';
+    +'<div id="sumWrap">'+summaryHtml()+'</div></div>';
   updateCount();
+}
+/* Redraw only the totals. A full render() would wipe whatever the customer
+   has already typed into the delivery form. */
+function refreshSummary(){
+  var w=document.getElementById('sumWrap');
+  if(w) w.innerHTML=summaryHtml();
 }
 function place(){
   var v=function(id){return (document.getElementById(id).value||'').trim();};
@@ -223,6 +272,8 @@ function place(){
   window.scrollTo(0,0);
 }
 render();
+loadLiveStock(refreshSummary);    // admin photos + live prices in the totals
+onStoreSettings(refreshSummary);  // real delivery fee / free-delivery threshold
 </script>
 </body>
 </html>

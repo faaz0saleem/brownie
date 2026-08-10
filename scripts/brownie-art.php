@@ -75,7 +75,7 @@ function brownie(string $slug, array $body, array $crust, string $extras, array 
       <stop offset="0" stop-color="$k2"/><stop offset="1" stop-color="#2a170e"/>
     </linearGradient>
     <filter id="sh$id" x="-30%" y="-30%" width="160%" height="170%">
-      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#3a1e10" flood-opacity="0.42"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0b0a0a" flood-opacity="0.30"/>
     </filter>
   </defs>
 
@@ -106,7 +106,7 @@ file_put_contents("$out/brownie-chocolate.svg", brownie(
   ['#6b402b', '#3b2216'],
   ['#a9764f', '#4a2a1c'],
   '<ellipse cx="196" cy="118" rx="26" ry="11" fill="#c08a5c" opacity="0.22"/>',
-  ['#f7e7d6', '#eccfb4'],
+  ['#ffffff', '#ffe0cc'],
   7
 ));
 
@@ -121,7 +121,7 @@ foreach ([[178,124,13,9,-18],[228,110,15,10,12],[276,132,12,8,34],[206,158,14,9,
     $x - $rx + 2, $y, (int)($rx * 0.9), (int)($ry * 0.7), ($rx - 2) * 2);
 }
 file_put_contents("$out/brownie-nutty.svg", brownie(
-  'nutty', ['#70472e', '#3f2617'], ['#b98554', '#4f2f1e'], $nuts, ['#f6e5d2', '#e7c9a6'], 19
+  'nutty', ['#70472e', '#3f2617'], ['#b98554', '#4f2f1e'], $nuts, ['#ffffff', '#ffe7d8'], 19
 ));
 
 /* --- Salted Caramel: golden swirl and flakes of sea salt --- */
@@ -134,7 +134,7 @@ foreach ([[186,132],[232,124],[286,140],[210,168],[300,120],[258,178]] as [$x,$y
   $caramel .= sprintf('<rect x="%d" y="%d" width="4" height="4" rx="1" fill="#fffaf3" opacity="0.92"/>', $x, $y);
 }
 file_put_contents("$out/brownie-caramel.svg", brownie(
-  'caramel', ['#6d4224', '#3d2314'], ['#c08b4e', '#4c2c1a'], $caramel, ['#fae9d3', '#f0d0a8'], 31
+  'caramel', ['#6d4224', '#3d2314'], ['#c08b4e', '#4c2c1a'], $caramel, ['#ffffff', '#ffdce9'], 31
 ));
 
 echo "wrote assets/brownie-chocolate.svg, brownie-nutty.svg, brownie-caramel.svg\n";

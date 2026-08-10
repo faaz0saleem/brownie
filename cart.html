@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon-192.png"/>
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png"/>
 <link rel="manifest" href="/site.webmanifest"/>
-<meta name="theme-color" content="#d98e4a"/>
+<meta name="theme-color" content="#ff6a13"/>
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="Fudgio"/>
 <meta property="og:title" content="Your Cart | Fudgio"/>
@@ -37,12 +37,12 @@
      after this tag, so a slow font CDN would leave customers on an empty menu. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
-<link rel="stylesheet" href="/assets/store.css?v=46553c3e"/>
+<link rel="stylesheet" href="/assets/store.css?v=df706fa2"/>
 </head>
 <body>
 <header class="site-header"><div class="wrap nav">
   <a href="/" class="brand"><span class="logo">🍫</span><span class="brand-name">Fudgio<small>Fresh · Fudgy · COD</small></span></a>
-  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/about">About</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></nav>
+  <nav class="nav-links"><a href="/">Home</a><a href="/menu">Menu</a><a href="/gifting">Gifting</a><a href="/bulk-orders">Bulk Orders</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
   <a href="/cart" class="cart-btn">🛒 <span class="cart-count" id="cartCount">0</span></a>
 </div></header>
 
@@ -54,10 +54,44 @@
   <div id="root"></div>
 </div></main>
 
-<footer class="site-footer"><div class="wrap">© <span id="yr"></span> Fudgio · Cash on Delivery only · Handcrafted with 💛</div></footer>
+<footer class="site-footer"><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand">
+      <a href="/" class="brand" style="justify-content:flex-start"><span class="logo">🍫</span><span class="brand-name">Fudgio</span></a>
+      <p>Handcrafted, small-batch brownies baked fresh to order and delivered across Lahore. Cash on Delivery only.</p>
+    </div>
+    <div>
+      <h4>Shop</h4>
+      <a href="/menu">Our Menu</a>
+      <a href="/brownies/classic-chocolate">Classic Chocolate</a>
+      <a href="/brownies/nutty-delight">Nutty Delight</a>
+      <a href="/brownies/salted-caramel">Salted Caramel</a>
+      <a href="/gifting">Gift boxes</a>
+    </div>
+    <div>
+      <h4>Help</h4>
+      <a href="/track">Track your order</a>
+      <a href="/delivery">Delivery &amp; areas</a>
+      <a href="/ingredients">Ingredients &amp; allergens</a>
+      <a href="/faq">FAQ</a>
+      <a href="/about">Our story</a>
+    </div>
+    <div>
+      <h4>Get in touch</h4>
+      <a id="mail" href="#">Email us</a>
+      <a href="/bulk-orders">Bulk &amp; party orders</a>
+      <a href="/contact">Contact us</a>
+      <p style="color:rgba(255,255,255,.55);font-size:.86rem;margin-top:10px">🚚 Delivering across Lahore<br>💵 Cash on Delivery only</p>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <span>&copy; <span id="yr"></span> Fudgio. All rights reserved.</span>
+    <span>Handcrafted with 💛 in Lahore</span>
+  </div>
+</div></footer>
 <div class="toast" id="toast"></div>
 
-<script src="/assets/store.js?v=46553c3e"></script>
+<script src="/assets/store.js?v=df706fa2"></script>
 <script>
 document.getElementById('yr').textContent=new Date().getFullYear();
 function render(){
@@ -67,8 +101,14 @@ function render(){
     // A brownie can sell out while the cart sits open — say so here rather than
     // letting the customer discover it at the end of checkout.
     var p=getProduct(i.id), out=!inStock(p);
-    var art = i.image ? '<img class="art-img" src="'+i.image+'" alt="" loading="lazy"/>' : i.emoji;
-    return '<div class="line'+(out?' is-sold-out':'')+'"><div class="art" style="background:'+i.gradient+'">'+art+'</div>'
+    // Prefer the live catalogue art over whatever was copied into the cart
+    // when the item was added, so a photo uploaded in the admin shows up on
+    // items that were already sitting in someone's cart. render() is re-run
+    // by loadLiveStock() below, which is what makes the swap appear.
+    var img  = (p && p.image) || i.image;
+    var grad = (p && p.gradient) || i.gradient;
+    var art  = img ? '<img class="art-img" src="'+img+'" alt="" loading="lazy"/>' : ((p && p.emoji) || i.emoji);
+    return '<div class="line'+(out?' is-sold-out':'')+'"><div class="art" style="background:'+grad+'">'+art+'</div>'
     +'<div class="info"><h4>'+i.name+(out?' <span class="sold-out-pill">Sold out</span>':'')+'</h4><div class="meta">'+(i.size||'')+' · '+money(i.price)+' each</div>'
     +'<div class="stepper"><button onclick="chg(\''+i.key+'\',-1)">−</button><span>'+i.qty+'</span><button onclick="chg(\''+i.key+'\',1)">+</button></div></div>'
     +'<div class="right"><div class="p">'+money(i.price*i.qty)+'</div><button class="rm" onclick="rm(\''+i.key+'\')">Remove</button></div></div>';}).join('');
@@ -89,7 +129,8 @@ function cartHasSoldOut(){ return getCart().some(function(i){ return !inStock(ge
 function chg(key,d){ var c=getCart(); var it=c.filter(function(i){return i.key===key;})[0]; if(!it)return; it.qty+=d; if(it.qty<=0)c=c.filter(function(i){return i.key!==key;}); saveCart(c); render(); }
 function rm(key){ saveCart(getCart().filter(function(i){return i.key!==key;})); render(); toast('Removed'); }
 render();
-loadLiveStock(render);   // repaint once real stock arrives
+loadLiveStock(render);      // repaint once real stock arrives
+onStoreSettings(render);    // and again once the real delivery pricing lands
 </script>
 </body>
 </html>

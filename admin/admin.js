@@ -302,6 +302,7 @@ async function loadInventory() {
         </div>
         <div class="inv-row"><label>Price</label><input type="number" id="price-${p.id}" value="${p.price}" /></div>
         <div class="inv-row"><label>Stock</label><input type="number" id="stock-${p.id}" value="${p.stock}" /></div>
+        <div class="inv-sizes">${(p.sizes || []).map((s) => `<span>${esc(s.label)} · ${RS(s.price)}</span>`).join('') || '<span>No sizes set</span>'}</div>
         <div class="inv-actions">
           <button class="btn-sm btn-save" onclick="saveProduct('${p.id}')">💾 Save</button>
           <button class="btn-sm btn-toggle" onclick="editProductDetails('${p.id}')">✏️ Edit</button>
@@ -312,6 +313,7 @@ async function loadInventory() {
             <input type="file" accept="image/*" style="display:none" onchange="uploadImage('${p.id}', this)">
           </label>
           ${p.imageUrl ? `<button class="btn-sm btn-toggle" onclick="removeImage('${p.id}')">🗑 Remove</button>` : `<button class="btn-sm btn-toggle" onclick="markOutOfStock('${p.id}')">Out of stock</button>`}
+          <button class="btn-sm btn-danger" onclick="deleteProduct('${p.id}', '${esc(p.name).replace(/'/g, "\\'")}')">🗑 Delete</button>
         </div>
       </div>
     </div>`).join('');
@@ -329,6 +331,14 @@ async function toggleActive(id, active) {
 async function markOutOfStock(id) {
   await api('/products/' + id, { method: 'PATCH', body: JSON.stringify({ stock: 0 }) });
   toast('Marked out of stock'); loadInventory(); loadDashboard();
+}
+async function deleteProduct(id, name) {
+  // Deleting removes it from the shop for good. Past orders are unaffected —
+  // each order stores its own copy of the item's name, size and price.
+  if (!confirm(`Delete "${name}" from the shop permanently?\n\nPast orders keep their records. To just take it off the menu, use Hide instead.`)) return;
+  const res = await api('/products/' + id, { method: 'DELETE' });
+  toast(res.ok ? 'Product deleted' : 'Delete failed');
+  loadInventory(); loadDashboard();
 }
 function uploadImage(id, input) {
   const file = input.files && input.files[0];
@@ -365,10 +375,33 @@ function downscale(dataUrl, maxW) {
 }
 
 // ---------- Customers ----------
+let CUSTOMERS = [];
 async function loadCustomers() {
-  const users = await (await api('/users')).json();
+  CUSTOMERS = await (await api('/users')).json();
+  ensureCustomerToolbar();
+  renderCustomers();
+}
+function ensureCustomerToolbar() {
+  if (document.getElementById('custToolbar')) return;
   const body = document.getElementById('customersBody');
-  if (!users.length) { body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="em">👥</div>No customers yet.</div></td></tr>`; return; }
+  const wrap = body.closest('.panel').querySelector('.table-wrap');
+  const bar = document.createElement('div');
+  bar.id = 'custToolbar'; bar.className = 'order-toolbar';
+  bar.innerHTML = `<input id="custSearch" placeholder="🔎 Search name, phone, email or city" oninput="renderCustomers()">
+    <button class="btn-sm btn-toggle" onclick="exportOrders()">⬇ Export orders CSV</button>`;
+  wrap.parentNode.insertBefore(bar, wrap);
+}
+function renderCustomers() {
+  const body = document.getElementById('customersBody');
+  const q = (document.getElementById('custSearch')?.value || '').trim().toLowerCase();
+  const users = q
+    ? CUSTOMERS.filter((u) => [u.name, u.phone, u.email, u.city]
+        .some((f) => String(f || '').toLowerCase().includes(q)))
+    : CUSTOMERS;
+  if (!users.length) {
+    body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="em">👥</div>${q ? 'No customers match that search.' : 'No customers yet.'}</div></td></tr>`;
+    return;
+  }
   body.innerHTML = users.map((u) => `
     <tr>
       <td><b><a href="#" onclick="customerDetail('${esc(u.id)}','${esc((u.name||'').replace(/['\\]/g,''))}');return false" style="color:var(--brand)">${esc(u.name || '—')}</a></b></td>
@@ -433,7 +466,7 @@ function productForm(p) {
     <div class="inv-row"><label style="width:120px">Emoji</label><input id="pfEmoji" value="${esc(p.emoji || '🍫')}" style="max-width:90px"></div>
     <div class="inv-row"><label style="width:120px">Base price</label><input type="number" id="pfPrice" value="${p.price}"></div>
     <div class="inv-row"><label style="width:120px">Stock</label><input type="number" id="pfStock" value="${p.stock}"></div>
-    <div class="inv-row"><label style="width:120px">Sizes</label><input id="pfSizes" value="${esc(sizes)}" placeholder="Box of 6:900, Box of 12:1650"></div>
+    <div class="inv-row"><label style="width:120px">Sizes</label><input id="pfSizes" value="${esc(sizes)}" placeholder="Single brownie:190, Box of 6:900, Box of 9:1290"></div>
     <div class="inv-row"><label style="width:120px">Flavours</label><input id="pfFlav" value="${esc((p.flavors || []).join(', '))}"></div>
     <div class="inv-row"><label style="width:120px">Allergens</label><input id="pfAll" value="${esc((p.allergens || []).join(', '))}"></div>
     <div class="inv-row"><label style="width:120px">Contains nuts</label><select id="pfNuts"><option value="0" ${!p.containsNuts ? 'selected' : ''}>No</option><option value="1" ${p.containsNuts ? 'selected' : ''}>Yes</option></select></div>

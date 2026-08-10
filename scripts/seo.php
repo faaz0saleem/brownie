@@ -76,7 +76,7 @@ function pages(): array {
     'menu.html' => [
       'url'   => '/menu',
       'title' => 'Our Brownie Menu — 3 Signature Flavours | Fudgio Lahore',
-      'desc'  => "Browse Fudgio's brownie menu: Classic Chocolate, Nutty Delight and Salted Caramel. Single brownies or boxes of 6, 9 and 12, baked fresh to order and delivered across Lahore. Cash on Delivery.",
+      'desc'  => "Browse Fudgio's brownie menu: Classic Chocolate, Nutty Delight and Salted Caramel. Single brownies or boxes of 6 and 9, baked fresh to order and delivered across Lahore. Cash on Delivery.",
       'index' => true,
       'priority' => '0.9',
     ],
@@ -100,6 +100,34 @@ function pages(): array {
       'desc'  => 'Get in touch with Fudgio about orders, bulk and corporate brownie requests, or feedback. We deliver across Lahore, Cash on Delivery only.',
       'index' => true,
       'priority' => '0.5',
+    ],
+    'gifting.html' => [
+      'url'   => '/gifting',
+      'title' => 'Brownie Gift Boxes Delivered in Lahore | Fudgio',
+      'desc'  => 'Send a box of 6 or 9 handcrafted brownies to someone in Lahore. Plain gift packaging with no prices, a note in the box, and Cash on Delivery.',
+      'index' => true,
+      'priority' => '0.7',
+    ],
+    'bulk-orders.html' => [
+      'url'   => '/bulk-orders',
+      'title' => 'Bulk & Corporate Brownie Orders in Lahore | Fudgio',
+      'desc'  => 'Brownies in bulk for offices, weddings, mehndis and events across Lahore. From 25 to 150+ pieces, mixed flavours, individually boxed on request. Cash on Delivery.',
+      'index' => true,
+      'priority' => '0.7',
+    ],
+    'delivery.html' => [
+      'url'   => '/delivery',
+      'title' => 'Brownie Delivery Areas & Charges in Lahore | Fudgio',
+      'desc'  => 'Where Fudgio delivers in Lahore, how long it takes, and what delivery costs. Same-day on orders before 2pm, free delivery over Rs 2,500, Cash on Delivery.',
+      'index' => true,
+      'priority' => '0.6',
+    ],
+    'ingredients.html' => [
+      'url'   => '/ingredients',
+      'title' => 'Brownie Ingredients & Allergen Information | Fudgio',
+      'desc'  => 'Full ingredients and allergens for every Fudgio brownie. Nutty Delight contains walnuts and hazelnuts; all brownies are baked in a kitchen that handles nuts, wheat, dairy, eggs and soy.',
+      'index' => true,
+      'priority' => '0.6',
     ],
     // Utility pages: useful to customers, not search results.
     'cart.html'     => ['url' => '/cart',     'title' => 'Your Cart | Fudgio',            'desc' => 'Review the brownies in your Fudgio cart before checking out.',                       'index' => false],
@@ -131,7 +159,7 @@ function schema_for(string $file): array {
     'description' => 'Handcrafted small-batch brownies baked fresh to order and delivered across Lahore.',
     'email' => 'faaz.saleem@fudgio.com',
     'servesCuisine' => 'Desserts',
-    'priceRange' => 'Rs 190 – Rs 1,920',
+    'priceRange' => 'Rs 190 – Rs 1,490',
     'currenciesAccepted' => 'PKR',
     'paymentAccepted' => 'Cash on Delivery',
     'areaServed' => ['@type' => 'City', 'name' => 'Lahore', 'containedInPlace' => ['@type' => 'Country', 'name' => 'Pakistan']],
@@ -260,7 +288,7 @@ function head_block(string $file, array $meta): string {
   }
   if (is_file("$root/assets/apple-touch-icon.png")) $out .= "<link rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/assets/apple-touch-icon.png\"/>\n";
   if (is_file("$root/site.webmanifest")) $out .= "<link rel=\"manifest\" href=\"/site.webmanifest\"/>\n";
-  $out .= "<meta name=\"theme-color\" content=\"#d98e4a\"/>\n";
+  $out .= "<meta name=\"theme-color\" content=\"#ff6a13\"/>\n";
   // Open Graph — controls how the link looks on WhatsApp, Facebook, LinkedIn.
   $out .= '<meta property="og:type" content="' . $type . "\"/>\n";
   $out .= '<meta property="og:site_name" content="' . BRAND . "\"/>\n";
