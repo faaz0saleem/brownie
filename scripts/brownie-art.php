@@ -106,7 +106,7 @@ file_put_contents("$out/brownie-chocolate.svg", brownie(
   ['#6b402b', '#3b2216'],
   ['#a9764f', '#4a2a1c'],
   '<ellipse cx="196" cy="118" rx="26" ry="11" fill="#c08a5c" opacity="0.22"/>',
-  ['#ffffff', '#ffe0cc'],
+  ['#fff2e8', '#ffc49b'],
   7
 ));
 
@@ -121,7 +121,7 @@ foreach ([[178,124,13,9,-18],[228,110,15,10,12],[276,132,12,8,34],[206,158,14,9,
     $x - $rx + 2, $y, (int)($rx * 0.9), (int)($ry * 0.7), ($rx - 2) * 2);
 }
 file_put_contents("$out/brownie-nutty.svg", brownie(
-  'nutty', ['#70472e', '#3f2617'], ['#b98554', '#4f2f1e'], $nuts, ['#ffffff', '#ffe7d8'], 19
+  'nutty', ['#70472e', '#3f2617'], ['#b98554', '#4f2f1e'], $nuts, ['#fff1e4', '#ffbb90'], 19
 ));
 
 /* --- Salted Caramel: golden swirl and flakes of sea salt --- */
@@ -134,7 +134,7 @@ foreach ([[186,132],[232,124],[286,140],[210,168],[300,120],[258,178]] as [$x,$y
   $caramel .= sprintf('<rect x="%d" y="%d" width="4" height="4" rx="1" fill="#fffaf3" opacity="0.92"/>', $x, $y);
 }
 file_put_contents("$out/brownie-caramel.svg", brownie(
-  'caramel', ['#6d4224', '#3d2314'], ['#c08b4e', '#4c2c1a'], $caramel, ['#ffffff', '#ffdce9'], 31
+  'caramel', ['#6d4224', '#3d2314'], ['#c08b4e', '#4c2c1a'], $caramel, ['#fff0f5', '#ffb3d1'], 31
 ));
 
 echo "wrote assets/brownie-chocolate.svg, brownie-nutty.svg, brownie-caramel.svg\n";

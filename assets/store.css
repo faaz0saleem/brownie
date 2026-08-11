@@ -285,12 +285,19 @@ h1,h2,h3,h4,p{overflow-wrap:break-word}
 
 .lead{font-size:1.11rem;color:var(--ink-60);max-width:540px;margin-bottom:32px;animation:fu-rise .75s var(--ease) both .14s}
 .hero-cta{display:flex;gap:14px;flex-wrap:wrap;animation:fu-rise .75s var(--ease) both .22s}
-.hero-badges{display:flex;gap:38px;margin-top:44px;flex-wrap:wrap;animation:fu-rise .75s var(--ease) both .3s}
-.hero-badges div{display:flex;flex-direction:column}
-.hero-badges b{font-family:var(--display);font-size:1.85rem;line-height:1;
+/* Proper cards rather than three loose bits of text floating under the CTA. */
+.hero-badges{display:flex;gap:14px;margin-top:44px;flex-wrap:wrap;animation:fu-rise .75s var(--ease) both .3s}
+.hero-badges div{
+  display:flex;flex-direction:column;flex:1;min-width:132px;
+  padding:16px 18px;border-radius:var(--r-md);
+  background:var(--white);border:1.5px solid var(--line);box-shadow:var(--shadow-s);
+  transition:transform .28s var(--ease),border-color .28s,box-shadow .28s;
+}
+.hero-badges div:hover{transform:translateY(-4px);border-color:var(--orange-soft);box-shadow:var(--shadow-m)}
+.hero-badges b{font-family:var(--display);font-size:1.75rem;line-height:1;
   background:var(--grad);-webkit-background-clip:text;background-clip:text;
   -webkit-text-fill-color:transparent;color:transparent}
-.hero-badges span{font-size:.8rem;color:var(--ink-45);font-weight:600;margin-top:5px}
+.hero-badges span{font-size:.78rem;color:var(--ink-45);font-weight:700;margin-top:6px}
 
 .hero-art{
   position:relative;aspect-ratio:1/1;border-radius:var(--r-xl);
@@ -329,13 +336,60 @@ h1,h2,h3,h4,p{overflow-wrap:break-word}
 }
 .trust span:hover{transform:translateY(-2px) scale(1.04);opacity:1}
 
-/* ---------- 9. Sections ---------- */
-.section{padding:84px 0}
+/* ---------- 9. Sections ----------
+   The page alternates white / warm tint / black rather than running white all
+   the way down. Five stacked white sections read as one long empty page; the
+   changes of ground are what give it rhythm and stop the middle sagging. */
+.section{padding:74px 0}
 .section-alt{background:var(--surface-2)}
-.section-head{text-align:center;max-width:660px;margin:0 auto 52px}
-.section-head .eyebrow{margin-bottom:16px}
-.section-head h1,.section-head h2{font-size:clamp(2rem,4.4vw,2.9rem);margin-bottom:14px;color:var(--ink)}
-.section-head p{color:var(--ink-60);font-size:1.03rem}
+
+/* Warm ground: white carrying a little orange and pink, no new colours. */
+.section-tint{
+  background:
+    linear-gradient(180deg,rgba(255,106,19,.07),rgba(255,46,136,.07)),
+    var(--white);
+}
+
+/* Black ground, for one hard contrast break in the middle of the page.
+   These selectors are deliberately two levels deep (.section-dark .feature h4
+   rather than .section-dark h4): the component rules further down the file
+   set their own dark text colour at the same specificity, and being later in
+   source order they would otherwise win and paint near-black text onto the
+   black ground. */
+.section-dark{background:var(--black);color:var(--white)}
+.section-dark .section-head h1,
+.section-dark .section-head h2,
+.section-dark .feature h4,
+.section-dark .step h4,
+.section-dark .quote b,
+.section-dark h3{color:var(--white)}
+.section-dark .section-head p,
+.section-dark .feature p,
+.section-dark .step p,
+.section-dark .quote p{color:rgba(255,255,255,.66)}
+.section-dark .feature p strong,
+.section-dark .quote p strong{color:var(--white)}
+.section-dark .eyebrow{background:rgba(255,106,19,.18);border-color:rgba(255,106,19,.42);color:var(--orange)}
+.section-dark .feature,.section-dark .step,.section-dark .quote{
+  background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15);box-shadow:none;
+}
+.section-dark .feature:hover,.section-dark .step:hover,.section-dark .quote:hover{
+  border-color:var(--orange);background:rgba(255,255,255,.1);box-shadow:none;
+}
+.section-dark .feature .ico{background:linear-gradient(120deg,rgba(255,106,19,.32),rgba(255,46,136,.32))}
+.section-dark .quote .who span{color:rgba(255,255,255,.5)}
+.section-dark .btn-ghost{background:transparent;color:var(--white);border-color:rgba(255,255,255,.32)}
+.section-dark .btn-ghost:hover{border-color:var(--orange);color:var(--orange)}
+
+/* Wide enough that "Three flavours. Zero compromise." stays on one line at
+   desktop sizes instead of breaking after the second word. */
+.section-head{text-align:center;max-width:780px;margin:0 auto 44px}
+/* For a section that follows another on the same ground, where two lots of
+   vertical padding would otherwise stack into a dead gap. */
+.section-flush{padding-top:0}
+.section-head .eyebrow{margin-bottom:14px}
+.section-head h1,.section-head h2{font-size:clamp(2.1rem,4.8vw,3.1rem);margin-bottom:12px;color:var(--ink)}
+.section-head p{color:var(--ink-60);font-size:1.05rem}
 
 .page{padding:56px 0 84px}
 .page h1{font-size:clamp(2rem,4.4vw,2.8rem);margin-bottom:8px;color:var(--ink)}
@@ -361,7 +415,7 @@ h1,h2,h3,h4,p{overflow-wrap:break-word}
 .card:hover{transform:translateY(-9px);box-shadow:var(--shadow-l);border-color:var(--orange-soft)}
 
 .card-art{
-  position:relative;aspect-ratio:16/11;display:grid;place-items:center;
+  position:relative;aspect-ratio:4/3;display:grid;place-items:center;
   overflow:hidden;background:var(--grad-soft);
 }
 .card-art img,.card-art .art-img{
@@ -400,12 +454,12 @@ h1,h2,h3,h4,p{overflow-wrap:break-word}
 .card.is-sold-out:hover{transform:translateY(-3px)}
 .sold-out-pill{display:inline-block;padding:5px 12px;border-radius:var(--r-pill);background:var(--black);color:var(--white);font-size:.72rem;font-weight:900}
 
-.card-body{padding:22px}
-.card-body h3{font-size:1.32rem;margin-bottom:5px;color:var(--ink)}
-.card-body .tagline{color:var(--ink-60);font-size:.9rem;min-height:2.6em}
+.card-body{padding:24px 24px 22px}
+.card-body h3{font-size:1.5rem;margin-bottom:6px;color:var(--ink)}
+.card-body .tagline{color:var(--ink-60);font-size:.95rem;min-height:2.7em}
 .card-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .price{
-  font-family:var(--display);font-size:1.36rem;font-weight:900;
+  font-family:var(--display);font-size:1.5rem;font-weight:900;
   background:var(--grad);-webkit-background-clip:text;background-clip:text;
   -webkit-text-fill-color:transparent;color:transparent;
 }
@@ -419,32 +473,32 @@ h1,h2,h3,h4,p{overflow-wrap:break-word}
 .card:hover .card-btn{background:var(--grad);transform:translateX(3px)}
 
 /* ---------- 11. Features / steps / promises ---------- */
-.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:22px}
 .feature{
   background:var(--white);border:1.5px solid var(--line);border-radius:var(--r-md);
-  padding:30px 26px;box-shadow:var(--shadow-s);
+  padding:34px 30px;box-shadow:var(--shadow-s);
   transition:transform .3s var(--ease),box-shadow .3s,border-color .3s;
 }
 .feature:hover{transform:translateY(-7px);box-shadow:var(--shadow-m);border-color:var(--pink-soft)}
 .feature .ico{
-  display:grid;place-items:center;width:56px;height:56px;border-radius:16px;
-  background:var(--grad-soft);font-size:1.7rem;margin-bottom:16px;
+  display:grid;place-items:center;width:62px;height:62px;border-radius:18px;
+  background:var(--grad-soft);font-size:1.9rem;margin-bottom:18px;
   transition:transform .35s var(--ease-out-back);
 }
 .feature:hover .ico{transform:rotate(-8deg) scale(1.1)}
-.feature h4{font-size:1.14rem;margin-bottom:7px;color:var(--ink)}
-.feature p{color:var(--ink-60);font-size:.92rem}
+.feature h4{font-size:1.24rem;margin-bottom:9px;color:var(--ink)}
+.feature p{color:var(--ink-60);font-size:.96rem}
 
-.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:24px}
-.step{position:relative;padding:28px 24px;background:var(--white);border:1.5px solid var(--line);border-radius:var(--r-md);transition:transform .3s var(--ease),border-color .3s}
-.step:hover{transform:translateY(-7px);border-color:var(--orange-soft)}
+.steps{position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:22px}
+.step{position:relative;padding:32px 28px;background:var(--white);border:1.5px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-s);transition:transform .3s var(--ease),border-color .3s,box-shadow .3s}
+.step:hover{transform:translateY(-7px);border-color:var(--orange-soft);box-shadow:var(--shadow-m)}
 .step .n{
-  font-family:var(--display);font-size:2.6rem;font-weight:900;line-height:1;
+  font-family:var(--display);font-size:3rem;font-weight:900;line-height:1;
   background:var(--grad);-webkit-background-clip:text;background-clip:text;
-  -webkit-text-fill-color:transparent;color:transparent;opacity:.9;
+  -webkit-text-fill-color:transparent;color:transparent;
 }
-.step h4{font-size:1.12rem;margin:10px 0 7px;color:var(--ink)}
-.step p{color:var(--ink-60);font-size:.92rem}
+.step h4{font-size:1.2rem;margin:12px 0 8px;color:var(--ink)}
+.step p{color:var(--ink-60);font-size:.96rem}
 
 .quotes{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:24px}
 .quote{
@@ -464,24 +518,32 @@ h1,h2,h3,h4,p{overflow-wrap:break-word}
 .quote .who span{font-size:.8rem;color:var(--ink-45)}
 
 /* ---------- 12. CTA band ---------- */
+/* A clean orange-to-pink block. Translucent colour blobs over black turned
+   muddy brown where they overlapped, which is the opposite of appetising —
+   the gradient is laid down flat instead, with white shapes for depth. */
 .cta-band{
   position:relative;overflow:hidden;text-align:center;
-  padding:64px 32px;border-radius:var(--r-xl);
-  background:var(--black);color:var(--white);
+  padding:70px 32px;border-radius:var(--r-xl);
+  background:var(--grad);color:var(--white);
+  box-shadow:0 24px 60px rgba(255,46,136,.28);
 }
 .cta-band::before{
-  content:'';position:absolute;width:52%;aspect-ratio:1;border-radius:50%;
-  background:var(--orange);opacity:.34;top:-32%;left:-8%;
+  content:'';position:absolute;width:46%;aspect-ratio:1;border-radius:50%;
+  background:var(--white);opacity:.13;top:-26%;left:-6%;
   animation:fu-drift 15s ease-in-out infinite;
 }
 .cta-band::after{
-  content:'';position:absolute;width:46%;aspect-ratio:1;border-radius:50%;
-  background:var(--pink);opacity:.34;bottom:-30%;right:-6%;
+  content:'';position:absolute;width:38%;aspect-ratio:1;border-radius:50%;
+  background:var(--white);opacity:.11;bottom:-24%;right:-4%;
   animation:fu-drift 18s ease-in-out infinite reverse;
 }
 .cta-band>*{position:relative;z-index:1}
-.cta-band h2{font-size:clamp(1.8rem,4.2vw,2.6rem);margin-bottom:14px;color:var(--white)}
-.cta-band p{color:rgba(255,255,255,.78);max-width:520px;margin:0 auto 26px}
+.cta-band h2{font-size:clamp(1.9rem,4.4vw,2.8rem);margin-bottom:14px;color:var(--white)}
+.cta-band p{color:rgba(255,255,255,.86);max-width:540px;margin:0 auto 28px;font-size:1.05rem}
+/* On the gradient, the white button is the one that stands out. */
+.cta-band .btn-primary{background:var(--white);color:var(--orange);box-shadow:0 10px 26px rgba(11,10,10,.22)}
+.cta-band .btn-primary:hover{box-shadow:0 18px 40px rgba(11,10,10,.3)}
+.cta-band .btn-primary::after{background:rgba(255,106,19,.18)}
 
 /* ---------- 13. Product detail ---------- */
 .pd{display:grid;grid-template-columns:1fr 1fr;gap:52px;align-items:start}
