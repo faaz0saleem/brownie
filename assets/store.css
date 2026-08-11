@@ -715,14 +715,29 @@ h1,h2,h3,h4,p{overflow-wrap:break-word}
 .pay b{display:block;font-size:.97rem;color:var(--ink)}
 .pay span{font-size:.85rem;color:var(--ink-60)}
 
-/* Email verification block on checkout */
-.otp-wrap{padding:18px;border-radius:var(--r-md);background:var(--surface-2);border:1.5px solid var(--line);margin-bottom:18px}
-.otp-row,.verify-row{display:flex;gap:10px;flex-wrap:wrap}
-.otp-row input,.otp-input{flex:1;min-width:120px;letter-spacing:.4em;font-weight:900;text-align:center}
-.verify-btn{padding:13px 20px;border-radius:var(--r-sm);background:var(--black);color:var(--white);font-weight:800;font-size:.9rem;transition:transform .2s var(--ease-out-back)}
-.verify-btn:hover{transform:translateY(-2px)}
+/* Security check (CAPTCHA) on checkout */
+.captcha-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.captcha-img{
+  width:220px;height:70px;border-radius:var(--r-sm);
+  border:1.5px solid var(--line-strong);background:var(--surface-2);
+  /* The image arrives as a data URI a moment after render; reserving the box
+     keeps the form from jumping when it lands. */
+  display:block;flex:0 0 auto;
+}
+.captcha-refresh{
+  display:grid;place-items:center;width:44px;height:44px;flex:0 0 44px;
+  border-radius:var(--r-sm);border:1.5px solid var(--line-strong);
+  background:var(--white);font-size:1.2rem;color:var(--ink-60);
+  transition:transform .3s var(--ease),color .2s,border-color .2s;
+}
+.captcha-refresh:hover{color:var(--orange);border-color:var(--orange);transform:rotate(-90deg)}
+.captcha-input{letter-spacing:.35em;font-weight:900;text-transform:uppercase;text-align:center}
 .otp-note{font-size:.83rem;color:var(--ink-45);margin-top:9px}
-.otp-ok{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--r-pill);background:var(--orange-wash);border:1.5px solid var(--orange-soft);color:var(--orange);font-size:.85rem;font-weight:800}
+
+@media(max-width:420px){
+  /* Keep the image inside the panel on a narrow phone. */
+  .captcha-img{width:100%;max-width:220px;height:auto;aspect-ratio:22/7}
+}
 
 /* ---------- 15. Prose / FAQ / auth ---------- */
 .prose{max-width:800px;margin:0 auto}

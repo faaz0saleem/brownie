@@ -132,10 +132,12 @@ function db_init(PDO $pdo, string $driver): void {
   $pdo->exec("CREATE TABLE IF NOT EXISTS visits (
     id VARCHAR(40) PRIMARY KEY, visitor VARCHAR(40), page VARCHAR(191), ip VARCHAR(64),
     referrer VARCHAR(255), ua VARCHAR(255), created_at BIGINT)");
-  $pdo->exec("CREATE TABLE IF NOT EXISTS email_otp (
-    email VARCHAR(191) PRIMARY KEY, code_hash VARCHAR(255), expires_at BIGINT,
-    attempts INT DEFAULT 0, sends INT DEFAULT 0, last_sent BIGINT,
-    verified_at BIGINT, created_at BIGINT)");
+  // Checkout is gated by an image CAPTCHA rather than an emailed code; the
+  // old email_otp table is no longer created. An existing one is left alone
+  // rather than dropped, so no live data disappears on deploy.
+  $pdo->exec("CREATE TABLE IF NOT EXISTS captcha (
+    id VARCHAR(40) PRIMARY KEY, answer_hash VARCHAR(80), expires_at BIGINT,
+    attempts INT DEFAULT 0, used INT DEFAULT 0, created_at BIGINT)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS rate_hits (
     id VARCHAR(40) PRIMARY KEY, bucket VARCHAR(80), ip VARCHAR(64), created_at BIGINT)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS counters (name VARCHAR(40) PRIMARY KEY, value BIGINT)");
@@ -377,9 +379,9 @@ function order_create(array $items, array $customer, ?string $userId): array {
 
   $email = strtolower(trim($customer['email']));
 
-  // The email must have been confirmed with a code before an order is accepted.
-  if (!email_is_verified($email))
-    return ['error' => 'Please verify your email address before placing the order.'];
+  // Note: the email is a contact address, not a proof of identity — checkout
+  // is gated by the CAPTCHA in api/index.php instead of an emailed code. The
+  // per-email, per-phone and per-IP limits below are what stop bulk ordering.
 
   // --- Silent abuse controls (deliberately not advertised on the site) ---
   $now = now_ms();
@@ -490,12 +492,6 @@ function order_create(array $items, array $customer, ?string $userId): array {
   ]);
   if (!$userId) { db()->prepare("UPDATE orders SET user_id=? WHERE id=?")->execute([$user['id'],$order['id']]); $order['userId']=$user['id']; }
 
-  // The confirmation is single-use. Expire the code as well as the confirmation,
-  // otherwise anyone holding the old code could simply replay it.
-  try {
-    db()->prepare("UPDATE email_otp SET verified_at=NULL, code_hash='', expires_at=0 WHERE email=?")
-       ->execute([$email]);
-  } catch (Throwable $e) {}
   // Count this IP only now that an order really exists.
   if ($ip !== '') rate_hit('order:' . $ip, $ip);
 
@@ -641,89 +637,159 @@ function rate_count(string $bucket, int $windowMs): int {
   } catch (Throwable $e) { return 0; }
 }
 
-/* ---------------- email verification (OTP) ---------------- */
-function otp_row(string $email): ?array {
-  $st = db()->prepare("SELECT * FROM email_otp WHERE email=? LIMIT 1");
-  $st->execute([strtolower(trim($email))]);
-  $r = $st->fetch();
-  return $r ?: null;
-}
-function otp_send(string $email, string $ip): array {
-  $email = strtolower(trim($email));
-  if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return ['error' => 'Please enter a valid email address.'];
+/* ---------------- CAPTCHA ----------------
+   A self-contained image challenge, used to keep automated bulk ordering off
+   the checkout. Deliberately not reCAPTCHA: that needs a project id and API
+   key to verify server-side, and without them the check silently passes,
+   which is worse than no check at all because it looks like protection.
 
+   The answer is never sent to the browser. The image is generated once,
+   returned inline as a data URI, and only a hash of the answer is stored, so
+   there is no plaintext code sitting in the database and no second endpoint
+   that could be used to fish for one. Each challenge is single use.
+   ---------------------------------------------------------------------- */
+
+/** Characters that cannot be confused with each other once distorted. */
+const CAPTCHA_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CAPTCHA_LEN      = 5;
+const CAPTCHA_TTL_MS   = 10 * 60 * 1000;
+
+function captcha_table(): void {
+  db()->exec("CREATE TABLE IF NOT EXISTS captcha (
+    id VARCHAR(40) PRIMARY KEY, answer_hash VARCHAR(80), expires_at BIGINT,
+    attempts INT DEFAULT 0, used INT DEFAULT 0, created_at BIGINT)");
+}
+
+/**
+ * Issues a challenge. Returns ['id' => ..., 'image' => 'data:image/png;...'].
+ * Returns ['error' => ...] when the caller is asking for them too quickly.
+ */
+function captcha_create(string $ip): array {
+  captcha_table();
+
+  // One machine should not be able to pull thousands of challenges looking
+  // for one it has already solved, or just to burn CPU drawing images.
+  if ($ip !== '' && rate_count('captcha:' . $ip, 3600000) >= (int) env('MAX_CAPTCHA_PER_IP', '120'))
+    return ['error' => 'Too many attempts. Please try again later.'];
+  if ($ip !== '') rate_hit('captcha:' . $ip, $ip);
+
+  $code = '';
+  $max = strlen(CAPTCHA_ALPHABET) - 1;
+  for ($i = 0; $i < CAPTCHA_LEN; $i++) $code .= CAPTCHA_ALPHABET[random_int(0, $max)];
+
+  $id  = gen_id();
   $now = now_ms();
-  $row = otp_row($email);
+  db()->prepare("INSERT INTO captcha (id, answer_hash, expires_at, attempts, used, created_at) VALUES (?,?,?,0,0,?)")
+     ->execute([$id, captcha_hash($code), $now + CAPTCHA_TTL_MS, $now]);
 
-  // Anti-abuse: cooldown between sends, and a daily cap per address.
-  if ($row) {
-    if ($row['last_sent'] !== null && $now - (int)$row['last_sent'] < 45000)
-      return ['error' => 'Please wait a moment before requesting another code.'];
-    if ((int)$row['sends'] >= (int) env('MAX_CODES_PER_EMAIL', '15') && $now - (int)$row['created_at'] < 86400000)
-      return ['error' => 'Too many codes requested for this address. Please try again later.'];
-  }
-  // Per-IP cap so one machine cannot spray codes at many addresses. Kept high
-  // because many genuine customers share a carrier IP.
-  if (rate_count('otp:' . $ip, 3600000) >= (int) env('MAX_CODES_PER_IP', '40'))
-    return ['error' => 'Too many verification attempts. Please try again later.'];
-  rate_hit('otp:' . $ip, $ip);
+  // Opportunistic cleanup so the table cannot grow without bound.
+  try { db()->prepare("DELETE FROM captcha WHERE expires_at < ?")->execute([$now - 3600000]); } catch (Throwable $e) {}
 
-  $code = str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
-  $hash = password_hash($code, PASSWORD_BCRYPT);
-  $expires = $now + 10 * 60 * 1000;   // 10 minutes
+  return ['id' => $id, 'image' => captcha_image_data($code)];
+}
 
-  if ($row) {
-    db()->prepare("UPDATE email_otp SET code_hash=?, expires_at=?, attempts=0, sends=sends+1, last_sent=?, verified_at=NULL WHERE email=?")
-       ->execute([$hash, $expires, $now, $email]);
-  } else {
-    db()->prepare("INSERT INTO email_otp (email,code_hash,expires_at,attempts,sends,last_sent,verified_at,created_at) VALUES (?,?,?,0,1,?,NULL,?)")
-       ->execute([$email, $hash, $expires, $now, $now]);
-  }
+/** Answers are compared case-insensitively, so hash the normalised form. */
+function captcha_hash(string $code): string {
+  return hash('sha256', strtoupper(trim($code)) . '|' . env('COOKIE_SECRET', 'fudgio-captcha'));
+}
 
-  $brand = cfg()['brandName'];
-  $subject = $code . ' is your ' . $brand . ' verification code';
-  $text = "Your $brand verification code is: $code\n\n"
-        . "Enter this code on the checkout page to confirm your email and place your order.\n"
-        . "The code expires in 10 minutes.\n\n"
-        . "If you didn't request this, you can ignore this email.\n\n- $brand";
-  $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;border:1px solid #eee;border-radius:14px;overflow:hidden">'
-        . '<div style="background:linear-gradient(135deg,#c9762e,#f2557c);color:#fff;padding:20px 24px">'
-        . '<h2 style="margin:0;font-size:20px">🍫 ' . htmlspecialchars($brand) . ' — verify your email</h2></div>'
-        . '<div style="padding:24px">'
-        . '<p style="margin:0 0 14px;color:#444">Use this code to confirm your email and place your order:</p>'
-        . '<div style="font-size:34px;font-weight:800;letter-spacing:10px;color:#a85413;text-align:center;'
-        . 'background:#fff6ec;border:1px solid #f0cfa4;border-radius:12px;padding:16px 10px">' . $code . '</div>'
-        . '<p style="color:#777;font-size:13px;margin:16px 0 0">This code expires in 10 minutes. '
-        . "If you didn't request it, you can safely ignore this email.</p></div></div>";
+/**
+ * Checks an answer and consumes the challenge. Every outcome invalidates it —
+ * a wrong answer cannot be retried against the same image.
+ */
+function captcha_check(string $id, string $answer): array {
+  captcha_table();
+  $id = trim($id);
+  $answer = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $answer));
+  if ($id === '' || $answer === '') return ['error' => 'Please enter the code from the image.'];
 
-  [$ok, $err] = send_mail($email, $subject, $text, $html);
-  if (!$ok) {
-    error_log('Fudgio OTP send failed: ' . $err);
-    return ['error' => 'We could not send the code right now. Please try again in a moment.'];
-  }
+  $st = db()->prepare("SELECT * FROM captcha WHERE id=? LIMIT 1");
+  $st->execute([$id]);
+  $row = $st->fetch();
+  if (!$row)                                    return ['error' => 'That code has expired. Please try the new image.'];
+  if ((int)$row['used'] === 1)                  return ['error' => 'That code has already been used. Please try the new image.'];
+  if (now_ms() > (int)$row['expires_at'])       return ['error' => 'That code has expired. Please try the new image.'];
+
+  // Consume it either way, so a single image can never be brute-forced.
+  db()->prepare("UPDATE captcha SET used=1, attempts=attempts+1 WHERE id=?")->execute([$id]);
+
+  if (!hash_equals((string)$row['answer_hash'], captcha_hash($answer)))
+    return ['error' => 'That code was not correct. Please try the new image.'];
+
   return ['ok' => true];
 }
 
-function otp_check(string $email, string $code): array {
-  $email = strtolower(trim($email));
-  $row = otp_row($email);
-  if (!$row) return ['error' => 'Please request a verification code first.'];
-  if ((int)$row['attempts'] >= 6) return ['error' => 'Too many incorrect attempts. Please request a new code.'];
-  if (now_ms() > (int)$row['expires_at']) return ['error' => 'That code has expired. Please request a new one.'];
+/**
+ * Draws the challenge and returns it as a PNG data URI.
+ *
+ * Each character is drawn into its own small canvas with a built-in GD font,
+ * scaled up and rotated before being pasted down. That gives per-character
+ * distortion without needing a TTF file on the server, which shared hosting
+ * cannot be relied on to have.
+ */
+function captcha_image_data(string $code): string {
+  $w = 220; $h = 70;
+  if (!function_exists('imagecreatetruecolor')) return '';   // no GD: caller falls back
 
-  db()->prepare("UPDATE email_otp SET attempts=attempts+1 WHERE email=?")->execute([$email]);
-  if (!password_verify(trim($code), (string)$row['code_hash']))
-    return ['error' => 'That code is not correct. Please check and try again.'];
+  $im = imagecreatetruecolor($w, $h);
+  $white  = imagecolorallocate($im, 255, 255, 255);
+  imagefilledrectangle($im, 0, 0, $w, $h, $white);
 
-  db()->prepare("UPDATE email_otp SET verified_at=?, attempts=0 WHERE email=?")->execute([now_ms(), $email]);
-  return ['ok' => true];
-}
+  // Brand-coloured speckle, light enough to leave the characters readable.
+  $orange = imagecolorallocate($im, 255, 106, 19);
+  $pink   = imagecolorallocate($im, 255, 46, 136);
+  for ($i = 0; $i < 260; $i++) {
+    imagesetpixel($im, random_int(0, $w - 1), random_int(0, $h - 1), random_int(0, 1) ? $orange : $pink);
+  }
+  for ($i = 0; $i < 3; $i++) {
+    imageline($im, random_int(0, 30), random_int(0, $h), random_int($w - 30, $w), random_int(0, $h),
+      random_int(0, 1) ? $orange : $pink);
+  }
 
-// An address counts as verified for a limited window after confirming the code.
-function email_is_verified(string $email): bool {
-  $row = otp_row($email);
-  if (!$row || $row['verified_at'] === null) return false;
-  return (now_ms() - (int)$row['verified_at']) < 2 * 3600 * 1000;   // 2 hours
+  $black = imagecolorallocate($im, 11, 10, 10);
+  $slotW = (int) floor(($w - 24) / CAPTCHA_LEN);
+
+  // Built-in font 5 draws a glyph at exactly 9x15px, so the tile is sized to
+  // that: any larger and the character ends up as a small mark floating in a
+  // mostly-empty tile once it is scaled up.
+  for ($i = 0; $i < CAPTCHA_LEN; $i++) {
+    $ch = $code[$i];
+    $tw = 9; $th = 15;
+    $tile = imagecreatetruecolor($tw, $th);
+    $tbg = imagecolorallocate($tile, 255, 0, 255);          // magenta = the key colour
+    imagefilledrectangle($tile, 0, 0, $tw, $th, $tbg);
+    imagecolortransparent($tile, $tbg);
+    $tfg = imagecolorallocate($tile, 11, 10, 10);
+    imagestring($tile, 5, 0, 0, $ch, $tfg);                 // built-in font, no TTF needed
+
+    // Scale up, then rotate. Nearest-neighbour (imagecopyresized) keeps the
+    // strokes solid; resampling at this ratio turns them into grey mush.
+    $sw = 38; $sh = 56;
+    $big = imagecreatetruecolor($sw, $sh);
+    $bbg = imagecolorallocate($big, 255, 0, 255);
+    imagefilledrectangle($big, 0, 0, $sw, $sh, $bbg);
+    imagecolortransparent($big, $bbg);
+    imagecopyresized($big, $tile, 0, 0, 0, 0, $sw, $sh, $tw, $th);
+
+    $rot = imagerotate($big, random_int(-22, 22), $bbg);
+    imagecolortransparent($rot, $bbg);
+
+    $x = 10 + $i * $slotW + random_int(-2, 2);
+    $y = (int) (($h - imagesy($rot)) / 2) + random_int(-4, 4);
+    imagecopy($im, $rot, $x, $y, 0, 0, imagesx($rot), imagesy($rot));
+
+    imagedestroy($tile); imagedestroy($big); imagedestroy($rot);
+  }
+
+  // One thin stroke over the glyphs, to frustrate naive segmenting without
+  // making the code itself hard for a person to read.
+  imageline($im, 0, random_int(16, $h - 16), $w, random_int(16, $h - 16), $black);
+
+  ob_start();
+  imagepng($im);
+  $png = ob_get_clean();
+  imagedestroy($im);
+  return 'data:image/png;base64,' . base64_encode($png);
 }
 
 /* ---------------- visitor tracking ---------------- */

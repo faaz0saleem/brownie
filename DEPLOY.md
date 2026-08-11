@@ -22,11 +22,15 @@ with the admin at **admin.fudgio.com**.
 
 ---
 
-## ✉️ Email setup — REQUIRED before you take orders
+## ✉️ Email setup — optional, but do it
 
-Checkout now asks every customer to confirm their email with a **5-digit code**
-before an order can be placed. Those codes are sent from your own mailbox over
-authenticated SMTP, so the store cannot accept orders until this is filled in.
+**You can take orders without this.** Checkout is gated by an image security
+check (a CAPTCHA) generated on your own server, not by an emailed code, so no
+mail configuration is required for the shop to work.
+
+What email is still used for: the **order alert** sent to you when someone
+orders. Without SMTP configured you will not get that alert — you would have
+to watch the admin dashboard instead. That is the only thing you lose.
 
 1. In hPanel → **Emails**, make sure the mailbox `faaz.saleem@fudgio.com` exists
    and you know its password.
@@ -44,12 +48,12 @@ authenticated SMTP, so the store cannot accept orders until this is filled in.
    > repository is public, and every git deploy overwrites it on the server.
    > `.env.local` is git-ignored, is never deployed, and overrides `.env`.
 
-3. Test it: open the checkout, type your own email, press **Verify**. The code
-   should arrive within a minute. Check the spam folder the first time — the
-   checkout tells customers to do the same.
-4. To keep the codes out of spam long-term, add **SPF** and **DKIM** DNS records
-   for fudgio.com (hPanel → Emails → *Email accounts* → **DNS settings** shows
-   the exact records to paste into your DNS zone).
+3. Test it: open `/api/diag/mail?token=<admin password>&to=you@example.com`.
+   It reports the settings it is using and the real error from the send, so a
+   failure can be fixed rather than guessed at.
+4. To keep the alerts out of spam, add **SPF** and **DKIM** DNS records for
+   fudgio.com (hPanel → Emails → *Email accounts* → **DNS settings** shows the
+   exact records to paste into your DNS zone).
 
 If `SMTP_PASS` is blank the code falls back to PHP `mail()`, which most shared
 hosts either block or deliver straight to spam — so set it properly.

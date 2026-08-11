@@ -37,7 +37,7 @@
      after this tag, so a slow font CDN would leave customers on an empty menu. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
-<link rel="stylesheet" href="/assets/store.css?v=3cac6221"/>
+<link rel="stylesheet" href="/assets/store.css?v=62fb5199"/>
 </head>
 <body>
 <header class="site-header"><div class="wrap nav">
@@ -91,7 +91,7 @@
 </div></footer>
 <div class="toast" id="toast"></div>
 
-<script src="/assets/store.js?v=3cac6221"></script>
+<script src="/assets/store.js?v=62fb5199"></script>
 <script>
 document.getElementById('yr').textContent=new Date().getFullYear();
 function summaryHtml(){
@@ -111,32 +111,32 @@ function summaryHtml(){
     +'<div class="srow tot"><span>Total</span><span>'+money(cartTotal())+'</span></div>'
     +'<div class="cod">💵 Cash on Delivery only</div></div>';
 }
-/* ---------- email verification ---------- */
-var VERIFIED_EMAIL = '';      // the address confirmed with a code in this session
-var resendTimer = null;
+/* ---------- security check (CAPTCHA) ----------
+   Replaces the emailed verification code. The image and its id come from
+   /api/captcha; the answer is only ever checked server-side. A challenge is
+   consumed by any order attempt that reaches the server, right or wrong, so
+   a fresh one is pulled after every failure. */
+var CAPTCHA_ID = '';
 
 function esc(s){ return String(s).replace(/[&<>"']/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
 function emailFieldHTML(){
   return '<div class="fg"><label>Email *</label>'
-    +'<div class="verify-row">'
-      +'<input id="fEmail" type="email" autocomplete="email" placeholder="you@email.com" oninput="emailChanged()"/>'
-      +'<button type="button" class="verify-btn" id="vBtn" onclick="sendCode()">Verify</button>'
-    +'</div>'
-    +'<div class="otp-ok" id="otpOk" hidden>✅ Email verified</div>'
+    +'<input id="fEmail" type="email" autocomplete="email" placeholder="you@email.com"/>'
+    +'<div class="otp-note">We use this to send your order confirmation.</div>'
   +'</div>';
 }
 
-// Shown full-width under the phone/email row once a code has been sent.
-function otpBlockHTML(){
-  return '<div class="otp-wrap" id="otpWrap" hidden>'
-    +'<div class="otp-note" id="otpNote"></div>'
-    +'<div class="verify-row otp-row">'
-      +'<input id="fCode" class="otp-input" inputmode="numeric" maxlength="5" autocomplete="one-time-code" placeholder="00000"/>'
-      +'<button type="button" class="verify-btn" id="cBtn" onclick="confirmCode()">Confirm code</button>'
+function captchaHTML(){
+  return '<div class="fg">'
+    +'<label>Security check *</label>'
+    +'<div class="captcha-row">'
+      +'<img id="capImg" class="captcha-img" width="220" height="70" alt="Characters to type into the box below"/>'
+      +'<button type="button" class="captcha-refresh" onclick="loadCaptcha()" title="Show a different image" aria-label="Show a different image">↻</button>'
     +'</div>'
-    +'<button type="button" class="link-btn" id="rBtn" onclick="sendCode()">Send the code again</button>'
+    +'<input id="fCaptcha" class="captcha-input" maxlength="5" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Type the 5 characters"/>'
+    +'<div class="otp-note">Type the characters from the image. This keeps automated bulk orders off the shop.</div>'
   +'</div>';
 }
 
@@ -152,64 +152,24 @@ function api(method, url, data, cb){
   x.send(data ? JSON.stringify(data) : null);
 }
 
-// Typing a different address invalidates the previous confirmation.
-function emailChanged(){
-  var email = (document.getElementById('fEmail').value||'').trim().toLowerCase();
-  var ok = document.getElementById('otpOk'), btn = document.getElementById('vBtn');
-  if (email && email === VERIFIED_EMAIL){ ok.hidden = false; btn.hidden = true; }
-  else { ok.hidden = true; btn.hidden = false; }
-}
-
-function sendCode(){
-  var email = (document.getElementById('fEmail').value||'').trim();
-  var err = document.getElementById('err');
-  if(!validEmail(email)){ err.textContent = 'Please enter a valid email address first.'; document.getElementById('fEmail').focus(); return; }
-  err.textContent = '';
-  var btn = document.getElementById('vBtn'), rBtn = document.getElementById('rBtn');
-  btn.disabled = true; rBtn.disabled = true; btn.textContent = 'Sending…';
-  api('POST','/api/verify/send',{email:email}, function(ok, d){
-    btn.textContent = 'Verify';
-    if(!ok){ btn.disabled = false; rBtn.disabled = false; err.textContent = d.error || 'Could not send the code. Please try again.'; return; }
-    document.getElementById('otpWrap').hidden = false;
-    document.getElementById('otpNote').innerHTML =
-      'We sent a 5-digit code to <strong>' + esc(email) + '</strong>. '
-      + 'It can take a minute to arrive — <strong>if you can\'t find it, please check your spam / junk folder.</strong>';
-    document.getElementById('fCode').focus();
-    startResendCooldown(45);
-  });
-}
-
-function startResendCooldown(secs){
-  var rBtn = document.getElementById('rBtn'), vBtn = document.getElementById('vBtn');
-  clearInterval(resendTimer);
-  rBtn.disabled = true; vBtn.disabled = true;
-  rBtn.textContent = 'Send the code again (' + secs + 's)';
-  resendTimer = setInterval(function(){
-    secs--;
-    if(secs <= 0){
-      clearInterval(resendTimer);
-      rBtn.disabled = false; vBtn.disabled = false;
-      rBtn.textContent = 'Send the code again';
-    } else rBtn.textContent = 'Send the code again (' + secs + 's)';
-  }, 1000);
-}
-
-function confirmCode(){
-  var email = (document.getElementById('fEmail').value||'').trim();
-  var code = (document.getElementById('fCode').value||'').replace(/\D/g,'');
-  var err = document.getElementById('err');
-  if(code.length !== 5){ err.textContent = 'Please enter the 5-digit code from the email.'; return; }
-  err.textContent = '';
-  var cBtn = document.getElementById('cBtn'); cBtn.disabled = true; cBtn.textContent = 'Checking…';
-  api('POST','/api/verify/check',{email:email, code:code}, function(ok, d){
-    cBtn.disabled = false; cBtn.textContent = 'Confirm';
-    if(!ok){ err.textContent = d.error || 'That code is not correct.'; return; }
-    clearInterval(resendTimer);
-    VERIFIED_EMAIL = email.toLowerCase();
-    document.getElementById('otpWrap').hidden = true;
-    document.getElementById('vBtn').hidden = true;
-    document.getElementById('otpOk').hidden = false;
-    toast('Email verified ✅');
+function loadCaptcha(){
+  var img = document.getElementById('capImg');
+  var box = document.getElementById('fCaptcha');
+  if(!img) return;
+  CAPTCHA_ID = '';
+  img.removeAttribute('src');
+  img.alt = 'Loading the security image…';
+  if(box) box.value = '';
+  api('GET','/api/captcha',null,function(ok,d){
+    if(!ok || !d.id){
+      img.alt = 'The security image could not be loaded.';
+      var e = document.getElementById('err');
+      if(e) e.textContent = d.error || 'Could not load the security check. Please refresh the page.';
+      return;
+    }
+    CAPTCHA_ID = d.id;
+    img.src = d.image;
+    img.alt = 'Characters to type into the box below';
   });
 }
 
@@ -222,13 +182,14 @@ function render(){
     +'<div class="fg"><label>Full name *</label><input id="fName" placeholder="e.g. Ayesha Khan"/></div>'
     +'<div class="frow"><div class="fg"><label>Phone *</label><input id="fPhone" type="tel" autocomplete="tel" placeholder="03xx-xxxxxxx"/></div>'
     + emailFieldHTML() + '</div>'
-    + otpBlockHTML()
     +'<div class="fg"><label>City *</label><select id="fCity"><option value="Lahore">Lahore</option></select>'
     +'<div style="font-size:.8rem;color:var(--cream-dim);margin-top:6px">🚚 We currently deliver in <strong>Lahore</strong> only.</div></div>'
     +'<div class="fg"><label>Delivery address *</label><textarea id="fAddr" rows="2" placeholder="House #, street, area"></textarea></div>'
     +'<div class="fg"><label>Notes (optional)</label><input id="fNotes" placeholder="Landmark, delivery time, etc."/></div>'
+    + captchaHTML()
     +'<button class="btn btn-primary btn-block" id="place" onclick="place()">Place order (COD) 🍫</button></div>'
     +'<div id="sumWrap">'+summaryHtml()+'</div></div>';
+  loadCaptcha();
   updateCount();
 }
 /* Redraw only the totals. A full render() would wipe whatever the customer
@@ -244,22 +205,21 @@ function place(){
   if(!name||!phone||!email||!city||!addr){ err.textContent='Please fill in name, phone, email, city and address.'; return; }
   if(!validPhone(phone)){ err.textContent='Please enter a valid phone number (10–15 digits).'; return; }
   if(!validEmail(email)){ err.textContent='Please enter a valid email address.'; return; }
-  if(email.toLowerCase()!==VERIFIED_EMAIL){
-    err.textContent='Please verify your email first — tap “Verify” next to the email box and enter the code we send you.';
-    document.getElementById('fEmail').focus(); return;
-  }
   if(city.toLowerCase()!=='lahore'){ err.textContent='Sorry, we currently deliver in Lahore only.'; return; }
+  var answer=(document.getElementById('fCaptcha').value||'').trim();
+  if(!CAPTCHA_ID){ err.textContent='The security check is still loading. Please wait a moment and try again.'; loadCaptcha(); return; }
+  if(!answer){ err.textContent='Please type the characters from the security image.'; document.getElementById('fCaptcha').focus(); return; }
   err.textContent='';
   var btn=document.getElementById('place'); btn.disabled=true; btn.textContent='Placing order…';
   var cart=getCart();
   var items=cart.map(function(i){return {productId:i.id,size:i.size,qty:i.qty};});
   var customer={name:name,phone:phone,email:email,city:city,address:addr,notes:notes};
   var orderId='';
-  try{ var x=new XMLHttpRequest(); x.open('POST','/api/orders',false); x.setRequestHeader('Content-Type','application/json'); x.send(JSON.stringify({items:items,customer:customer}));
+  try{ var x=new XMLHttpRequest(); x.open('POST','/api/orders',false); x.setRequestHeader('Content-Type','application/json'); x.send(JSON.stringify({items:items,customer:customer,captchaId:CAPTCHA_ID,captchaAnswer:answer}));
     if(x.status>=200&&x.status<300){ var o=JSON.parse(x.responseText).order; if(o&&o.id) orderId=o.id; }
-    else { var e=JSON.parse(x.responseText); err.textContent=(e&&e.error)||'Could not place order. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; return; }
-  }catch(ex){ err.textContent='Network error. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; return; }
-  localStorage.removeItem('fudgio_cart'); updateCount(); VERIFIED_EMAIL='';
+    else { var e=JSON.parse(x.responseText); err.textContent=(e&&e.error)||'Could not place order. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; loadCaptcha(); return; }
+  }catch(ex){ err.textContent='Network error. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; loadCaptcha(); return; }
+  localStorage.removeItem('fudgio_cart'); updateCount(); CAPTCHA_ID='';
   var trackUrl='/track?id='+encodeURIComponent(orderId)+'&phone='+encodeURIComponent(phone);
   document.getElementById('root').innerHTML='<div class="empty"><div class="em">✅</div>'
     +'<h1 style="font-family:var(--display)">Order placed!</h1>'

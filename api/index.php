@@ -135,21 +135,6 @@ try {
       $r['reach'][$port] = $fp ? 'open in '.round((microtime(true)-$t0)*1000).'ms' : "blocked ($e2)";
       if ($fp) fclose($fp);
     }
-    // Why is a particular address being refused a code? (no code is revealed)
-    $who = strtolower(trim($_GET['email'] ?? ''));
-    if ($who !== '') {
-      $row = otp_row($who);
-      $r['address'] = $who;
-      $r['addressState'] = $row ? [
-        'codesSentToday' => (int) $row['sends'],
-        'secondsSinceLastSend' => $row['last_sent'] ? intdiv(now_ms() - (int)$row['last_sent'], 1000) : null,
-        'wrongAttempts' => (int) $row['attempts'],
-        'codeExpired' => now_ms() > (int) $row['expires_at'],
-        'currentlyVerified' => email_is_verified($who),
-      ] : 'no code has ever been requested for this address';
-      $r['codesFromThisIpLastHour'] = rate_count('otp:' . client_ip(), 3600000);
-    }
-
     $to = trim($_GET['to'] ?? '');
     if ($to !== '' && filter_var($to, FILTER_VALIDATE_EMAIL)) {
       [$ok, $err] = send_mail($to, 'Fudgio test email', "If you are reading this, sending works.\n\n- Fudgio");
@@ -162,33 +147,14 @@ try {
     out($r);
   }
 
-  // ---- email verification (checkout) ----
-  if ($seg[0]==='verify') {
-    $action = $seg[1] ?? '';
-    if ($action==='send' && $method==='POST') {
-      $email = strtolower(trim((string)(body()['email'] ?? '')));
-      if (!filter_var($email, FILTER_VALIDATE_EMAIL)) err('Please enter a valid email address.');
-      $r = otp_send($email, client_ip());
-      isset($r['error']) ? err($r['error'], 429) : out(['ok'=>true,'sent'=>true]);
-    }
-    if ($action==='check' && $method==='POST') {
-      $b = body();
-      $email = strtolower(trim((string)($b['email'] ?? '')));
-      $code  = preg_replace('/\D/', '', (string)($b['code'] ?? ''));
-      if (!filter_var($email, FILTER_VALIDATE_EMAIL)) err('Please enter a valid email address.');
-      if (strlen($code) !== 5) err('Please enter the 5-digit code from the email.');
-      // Slow down code-guessing from a single machine.
-      $ip = client_ip();
-      if ($ip !== '' && rate_count('otpcheck:'.$ip, 900000) >= 30) err('Too many attempts. Please try again later.', 429);
-      if ($ip !== '') rate_hit('otpcheck:'.$ip, $ip);
-      $r = otp_check($email, $code);
-      isset($r['error']) ? err($r['error']) : out(['ok'=>true,'verified'=>true]);
-    }
-    if ($action==='status' && $method==='GET') {
-      $email = strtolower(trim((string)($_GET['email'] ?? '')));
-      out(['verified' => $email !== '' && email_is_verified($email)]);
-    }
-    err('Not found',404);
+  // ---- CAPTCHA (checkout) ----
+  // Issues a one-shot image challenge. The answer never leaves the server —
+  // only a hash of it is stored — so there is nothing here to read back.
+  if ($path==='captcha' && $method==='GET') {
+    $r = captcha_create(client_ip());
+    if (isset($r['error'])) err($r['error'], 429);
+    if ($r['image'] === '') err('Verification is unavailable right now. Please try again later.', 503);
+    out(['id'=>$r['id'], 'image'=>$r['image']]);
   }
 
   // ---- products ----
@@ -221,6 +187,10 @@ try {
       // per-email and per-phone rules that do the actual work.
       throttle('orderpost', 60, 3600000);
       $b=body(); $u=current_user();
+      // Prove a human is placing this. Checked before anything is written, and
+      // the challenge is consumed either way so one image cannot be reused.
+      $cap = captcha_check((string)($b['captchaId'] ?? ''), (string)($b['captchaAnswer'] ?? ''));
+      if (isset($cap['error'])) err($cap['error']);
       $cust=$b['customer']??[]; if($u && empty($cust['email'])) $cust['email']=$u['email'];
       $r=order_create($b['items']??[], $cust, $u['id']??null);
       isset($r['error'])?err($r['error']):out(['order'=>$r['order']],201);
