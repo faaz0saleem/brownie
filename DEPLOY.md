@@ -22,6 +22,88 @@ with the admin at **admin.fudgio.com**.
 
 ---
 
+## 📱 Phone verification — how customers are checked at checkout
+
+Checkout asks for the customer's mobile number, texts them a 5-digit code and
+will not place the order until that code is entered. This replaced the emailed
+code, which was landing in spam.
+
+**Without an SMS gateway configured the shop still works.** The verification
+step is skipped and the image security check (CAPTCHA) on the details page
+gates the order instead. So you can deploy first and switch SMS on later.
+
+### You need a gateway account
+
+Your own phone cannot send these messages. You need an SMS provider that gives
+you an API key. In Pakistan the usual options are a local bulk-SMS gateway
+(Veevotech, BraveSMS, Rombit, or the Telenor/Jazz business panels) — these are
+cheap per message and usually need a **sender ID approved for your account**.
+Twilio also works but is more expensive and has stricter rules for Pakistani
+numbers.
+
+### Wiring one up
+
+Put the credentials in **`public_html/.env.local`** (never `.env` — that file
+is committed and public). For a typical local gateway:
+
+```
+SMS_PROVIDER=generic
+SMS_FROM=Fudgio
+SMS_URL=https://api.yourprovider.pk/send?apikey=YOURKEY&sender={from}&to={to}&message={text}
+SMS_METHOD=GET
+```
+
+`{to}` `{text}` `{from}` are filled in and URL-encoded for you. `{to}` is
+always normalised to `+923xxxxxxxxx`, so 0300-1234567, 0300 1234567 and
++92 300 1234567 all reach the same number.
+
+If your provider answers HTTP 200 even when a send fails, add a word that only
+appears on success so failures are not silently swallowed:
+
+```
+SMS_SUCCESS_CONTAINS=OK
+```
+
+For Twilio instead:
+
+```
+SMS_PROVIDER=twilio
+SMS_FROM=+1xxxxxxxxxx
+TWILIO_ACCOUNT_SID=ACxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxx
+```
+
+### Testing it
+
+Open, as the admin:
+
+```
+/api/diag/sms?token=<admin password>&to=03001234567
+```
+
+It reports which provider is configured, how your number was normalised, and
+the **real error** from the gateway if the send failed. It never echoes your
+API key. Drop the `&to=` to check the settings without spending a message.
+
+To watch the flow without sending anything, set `SMS_PROVIDER=log` — the code
+is written to the PHP error log instead of being texted.
+
+### What stops abuse
+
+Sending SMS costs money, so the send endpoint is the part worth attacking:
+
+- The image CAPTCHA must be solved before any code is sent.
+- One minute between codes to the same number; **8 per number per day**.
+- **20 codes per IP per hour**.
+- Six wrong guesses burns the code.
+- A confirmation is single use — placing an order clears it.
+- The older limits still apply on top: one order per email per hour, one per
+  phone per hour, 8 per IP per hour.
+
+Tune the caps with `MAX_SMS_PER_NUMBER` and `MAX_SMS_PER_IP`.
+
+---
+
 ## ✉️ Email setup — optional, but do it
 
 **You can take orders without this.** Checkout is gated by an image security

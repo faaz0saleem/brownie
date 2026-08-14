@@ -37,7 +37,7 @@
      after this tag, so a slow font CDN would leave customers on an empty menu. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
-<link rel="stylesheet" href="/assets/store.css?v=62fb5199"/>
+<link rel="stylesheet" href="/assets/store.css?v=4246cc71"/>
 </head>
 <body>
 <header class="site-header"><div class="wrap nav">
@@ -50,7 +50,7 @@
   <div class="crumbs"><a href="/">Home</a> › <a href="/cart">Cart</a> ›<span class="on">Checkout</span></div>
   <h1>Checkout</h1>
   <div class="sub">Enter your delivery details. You'll pay cash when your brownies arrive.</div>
-  <div class="steps-bar"><div class="s"><span class="b">1</span>Cart</div><div class="sep"></div><div class="s on"><span class="b">2</span>Details</div><div class="sep"></div><div class="s"><span class="b">3</span>Done</div></div>
+  <div class="steps-bar" id="stepsBar"></div>
   <div id="root"></div>
 </div></main>
 
@@ -91,7 +91,7 @@
 </div></footer>
 <div class="toast" id="toast"></div>
 
-<script src="/assets/store.js?v=62fb5199"></script>
+<script src="/assets/store.js?v=4246cc71"></script>
 <script>
 document.getElementById('yr').textContent=new Date().getFullYear();
 function summaryHtml(){
@@ -111,34 +111,25 @@ function summaryHtml(){
     +'<div class="srow tot"><span>Total</span><span>'+money(cartTotal())+'</span></div>'
     +'<div class="cod">💵 Cash on Delivery only</div></div>';
 }
-/* ---------- security check (CAPTCHA) ----------
-   Replaces the emailed verification code. The image and its id come from
-   /api/captcha; the answer is only ever checked server-side. A challenge is
-   consumed by any order attempt that reaches the server, right or wrong, so
-   a fresh one is pulled after every failure. */
+/* ---------- checkout steps ------------------------------------------------
+   Two steps: fill in the delivery details, then confirm a code sent by SMS to
+   the phone number given. Email codes were landing in spam and are a poor fit
+   for these customers; a phone number is also the thing the rider actually
+   needs for a cash-on-delivery drop.
+
+   When no SMS gateway is configured (sms_ready() is false server-side) the
+   verification step is skipped entirely and the image CAPTCHA on the details
+   step gates the order instead, so the shop keeps taking orders either way.
+   The CAPTCHA guards the *send* endpoint when SMS is on, because sending
+   costs real money and is the part worth abusing.
+   ------------------------------------------------------------------------ */
+var SMS_ON     = false;   // set from /api/storefront
 var CAPTCHA_ID = '';
+var DETAILS    = null;    // the delivery form, kept while on the verify step
+var resendTimer = null;
 
 function esc(s){ return String(s).replace(/[&<>"']/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-
-function emailFieldHTML(){
-  return '<div class="fg"><label>Email *</label>'
-    +'<input id="fEmail" type="email" autocomplete="email" placeholder="you@email.com"/>'
-    +'<div class="otp-note">We use this to send your order confirmation.</div>'
-  +'</div>';
-}
-
-function captchaHTML(){
-  return '<div class="fg">'
-    +'<label>Security check *</label>'
-    +'<div class="captcha-row">'
-      +'<img id="capImg" class="captcha-img" width="220" height="70" alt="Characters to type into the box below"/>'
-      +'<button type="button" class="captcha-refresh" onclick="loadCaptcha()" title="Show a different image" aria-label="Show a different image">↻</button>'
-    +'</div>'
-    +'<input id="fCaptcha" class="captcha-input" maxlength="5" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Type the 5 characters"/>'
-    +'<div class="otp-note">Type the characters from the image. This keeps automated bulk orders off the shop.</div>'
-  +'</div>';
-}
 
 function api(method, url, data, cb){
   var x = new XMLHttpRequest();
@@ -152,6 +143,28 @@ function api(method, url, data, cb){
   x.send(data ? JSON.stringify(data) : null);
 }
 
+/* ---- step indicator ---- */
+function renderSteps(active){
+  var bar = document.getElementById('stepsBar');
+  if(!bar) return;
+  var steps = SMS_ON ? ['Cart','Details','Verify','Done'] : ['Cart','Details','Done'];
+  bar.innerHTML = steps.map(function(label, i){
+    return '<div class="s'+(i<=active?' on':'')+'"><span class="b">'+(i+1)+'</span>'+label+'</div>';
+  }).join('<div class="sep"></div>');
+}
+
+/* ---- CAPTCHA ---- */
+function captchaHTML(){
+  return '<div class="fg">'
+    +'<label>Security check *</label>'
+    +'<div class="captcha-row">'
+      +'<img id="capImg" class="captcha-img" width="220" height="70" alt="Characters to type into the box below"/>'
+      +'<button type="button" class="captcha-refresh" onclick="loadCaptcha()" title="Show a different image" aria-label="Show a different image">↻</button>'
+    +'</div>'
+    +'<input id="fCaptcha" class="captcha-input" maxlength="5" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Type the 5 characters"/>'
+    +'<div class="otp-note">Type the characters from the image. This keeps automated bulk orders off the shop.</div>'
+  +'</div>';
+}
 function loadCaptcha(){
   var img = document.getElementById('capImg');
   var box = document.getElementById('fCaptcha');
@@ -163,8 +176,7 @@ function loadCaptcha(){
   api('GET','/api/captcha',null,function(ok,d){
     if(!ok || !d.id){
       img.alt = 'The security image could not be loaded.';
-      var e = document.getElementById('err');
-      if(e) e.textContent = d.error || 'Could not load the security check. Please refresh the page.';
+      showErr(d.error || 'Could not load the security check. Please refresh the page.');
       return;
     }
     CAPTCHA_ID = d.id;
@@ -173,23 +185,194 @@ function loadCaptcha(){
   });
 }
 
-function render(){
-  var root=document.getElementById('root');
-  if(!getCart().length){ root.innerHTML='<div class="empty"><div class="em">🛒</div><p>Your cart is empty.</p><a href="/menu" class="btn btn-primary" style="margin-top:18px">Browse the menu</a></div>'; updateCount(); return; }
-  root.innerHTML='<div class="split"><div class="panel"><h3>Delivery details</h3>'
+function showErr(msg){ var e = document.getElementById('err'); if(e) e.textContent = msg || ''; }
+
+/* ---- step 1: delivery details ---- */
+function detailsHTML(){
+  var d = DETAILS || {};
+  return '<div class="panel"><h3>Delivery details</h3>'
     +'<div class="pay"><div class="ico">💵</div><div><b>Cash on Delivery</b><br><small>Pay in cash when your brownies arrive. No online payment.</small></div></div>'
     +'<div class="err" id="err"></div>'
-    +'<div class="fg"><label>Full name *</label><input id="fName" placeholder="e.g. Ayesha Khan"/></div>'
-    +'<div class="frow"><div class="fg"><label>Phone *</label><input id="fPhone" type="tel" autocomplete="tel" placeholder="03xx-xxxxxxx"/></div>'
-    + emailFieldHTML() + '</div>'
+    +'<div class="fg"><label>Full name *</label><input id="fName" value="'+esc(d.name||'')+'" placeholder="e.g. Ayesha Khan"/></div>'
+    +'<div class="frow">'
+      +'<div class="fg"><label>Phone *</label><input id="fPhone" type="tel" autocomplete="tel" value="'+esc(d.phone||'')+'" placeholder="0300 1234567"/>'
+        +'<div class="otp-note">'+(SMS_ON?'We text a code to this number to confirm your order.':'The rider will call this number.')+'</div></div>'
+      +'<div class="fg"><label>Email *</label><input id="fEmail" type="email" autocomplete="email" value="'+esc(d.email||'')+'" placeholder="you@email.com"/>'
+        +'<div class="otp-note">For your order confirmation.</div></div>'
+    +'</div>'
     +'<div class="fg"><label>City *</label><select id="fCity"><option value="Lahore">Lahore</option></select>'
-    +'<div style="font-size:.8rem;color:var(--cream-dim);margin-top:6px">🚚 We currently deliver in <strong>Lahore</strong> only.</div></div>'
-    +'<div class="fg"><label>Delivery address *</label><textarea id="fAddr" rows="2" placeholder="House #, street, area"></textarea></div>'
-    +'<div class="fg"><label>Notes (optional)</label><input id="fNotes" placeholder="Landmark, delivery time, etc."/></div>'
+      +'<div class="otp-note">🚚 We currently deliver in <strong>Lahore</strong> only.</div></div>'
+    +'<div class="fg"><label>Delivery address *</label><textarea id="fAddr" rows="2" placeholder="House #, street, area">'+esc(d.address||'')+'</textarea></div>'
+    +'<div class="fg"><label>Notes (optional)</label><input id="fNotes" value="'+esc(d.notes||'')+'" placeholder="Landmark, delivery time, etc."/></div>'
     + captchaHTML()
-    +'<button class="btn btn-primary btn-block" id="place" onclick="place()">Place order (COD) 🍫</button></div>'
-    +'<div id="sumWrap">'+summaryHtml()+'</div></div>';
+    +'<button class="btn btn-primary btn-block" id="place" onclick="'+(SMS_ON?'continueToVerify()':'place()')+'">'
+      +(SMS_ON?'Continue →':'Place order (COD) 🍫')+'</button>'
+  +'</div>';
+}
+
+function showDetails(){
+  document.getElementById('stepPanel').innerHTML = detailsHTML();
+  renderSteps(1);
   loadCaptcha();
+}
+
+/** Reads and validates the form. Returns the details, or null after showing why. */
+function readDetails(){
+  var v = function(id){ var el=document.getElementById(id); return el ? (el.value||'').trim() : ''; };
+  var d = { name:v('fName'), phone:v('fPhone'), email:v('fEmail'),
+            city:v('fCity'), address:v('fAddr'), notes:v('fNotes') };
+  if(!d.name||!d.phone||!d.email||!d.city||!d.address){ showErr('Please fill in name, phone, email, city and address.'); return null; }
+  if(!validPhone(d.phone)){ showErr('Please enter a valid phone number, like 0300 1234567.'); return null; }
+  if(!validEmail(d.email)){ showErr('Please enter a valid email address.'); return null; }
+  if(d.city.toLowerCase()!=='lahore'){ showErr('Sorry, we currently deliver in Lahore only.'); return null; }
+  showErr('');
+  return d;
+}
+
+/* ---- step 2: confirm the code ---- */
+function continueToVerify(){
+  var d = readDetails();
+  if(!d) return;
+  var answer=(document.getElementById('fCaptcha').value||'').trim();
+  if(!CAPTCHA_ID){ showErr('The security check is still loading. Please wait a moment and try again.'); loadCaptcha(); return; }
+  if(!answer){ showErr('Please type the characters from the security image.'); document.getElementById('fCaptcha').focus(); return; }
+
+  var btn=document.getElementById('place'); btn.disabled=true; btn.textContent='Sending code…';
+  api('POST','/api/verify/phone/send',{phone:d.phone, captchaId:CAPTCHA_ID, captchaAnswer:answer}, function(ok, r){
+    btn.disabled=false; btn.textContent='Continue →';
+    if(!ok){
+      showErr(r.error || 'Could not send the code. Please try again.');
+      loadCaptcha();          // the challenge is spent whether or not it matched
+      return;
+    }
+    DETAILS = d;
+    showVerify();
+  });
+}
+
+function verifyHTML(){
+  return '<div class="panel"><h3>Confirm your number</h3>'
+    +'<p class="muted" style="font-size:.94rem;margin-bottom:18px">We sent a 5-digit code by SMS to <strong>'+esc(DETAILS.phone)+'</strong>. '
+      +'Enter it below to place your order.</p>'
+    +'<div class="err" id="err"></div>'
+    +'<div class="fg"><label>5-digit code *</label>'
+      +'<input id="fCode" class="captcha-input" inputmode="numeric" maxlength="5" autocomplete="one-time-code" placeholder="00000"/></div>'
+    +'<button class="btn btn-primary btn-block" id="confirmBtn" onclick="confirmAndPlace()">Confirm &amp; place order 🍫</button>'
+    +'<div style="display:flex;gap:12px;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap">'
+      +'<button type="button" class="link-btn" id="backBtn" onclick="backToDetails()">← Change details</button>'
+      +'<button type="button" class="link-btn" id="resendBtn" onclick="resendCode()">Send the code again</button>'
+    +'</div>'
+  +'</div>';
+}
+
+function showVerify(){
+  document.getElementById('stepPanel').innerHTML = verifyHTML();
+  renderSteps(2);
+  var box=document.getElementById('fCode'); if(box) box.focus();
+  startResendCooldown(60);
+}
+
+function backToDetails(){
+  clearInterval(resendTimer);
+  showDetails();
+}
+
+function startResendCooldown(secs){
+  var btn=document.getElementById('resendBtn');
+  if(!btn) return;
+  clearInterval(resendTimer);
+  btn.disabled=true;
+  btn.textContent='Send the code again ('+secs+'s)';
+  resendTimer=setInterval(function(){
+    secs--;
+    if(secs<=0){ clearInterval(resendTimer); btn.disabled=false; btn.textContent='Send the code again'; }
+    else btn.textContent='Send the code again ('+secs+'s)';
+  },1000);
+}
+
+/* A resend needs a fresh CAPTCHA, since the first one was spent getting here.
+   Rather than put a second image in front of the customer mid-flow, step back
+   to the details form — which they can submit again unchanged — and say so. */
+function resendCode(){
+  backToDetails();
+  showErr('Type the new security code and press Continue to get another SMS.');
+  var box=document.getElementById('fCaptcha'); if(box) box.focus();
+}
+
+function confirmAndPlace(){
+  var code=(document.getElementById('fCode').value||'').replace(/\D/g,'');
+  if(code.length!==5){ showErr('Please enter the 5-digit code from the SMS.'); return; }
+  showErr('');
+  var btn=document.getElementById('confirmBtn'); btn.disabled=true; btn.textContent='Checking…';
+  api('POST','/api/verify/phone/check',{phone:DETAILS.phone, code:code}, function(ok, r){
+    if(!ok){ btn.disabled=false; btn.textContent='Confirm & place order 🍫'; showErr(r.error||'That code is not correct.'); return; }
+    clearInterval(resendTimer);
+    btn.textContent='Placing order…';
+    place();
+  });
+}
+
+/* ---- placing the order ---- */
+function place(){
+  // Without SMS the details are still on screen and unread; with SMS they were
+  // captured before moving to the verification step.
+  var d = DETAILS || readDetails();
+  if(!d) return;
+  var body = { items: getCart().map(function(i){ return {productId:i.id, size:i.size, qty:i.qty}; }),
+               customer: d };
+  if(!SMS_ON){
+    var answer=(document.getElementById('fCaptcha').value||'').trim();
+    if(!CAPTCHA_ID){ showErr('The security check is still loading. Please wait a moment and try again.'); loadCaptcha(); return; }
+    if(!answer){ showErr('Please type the characters from the security image.'); document.getElementById('fCaptcha').focus(); return; }
+    body.captchaId = CAPTCHA_ID; body.captchaAnswer = answer;
+  }
+
+  var btn = document.getElementById(SMS_ON ? 'confirmBtn' : 'place');
+  if(btn){ btn.disabled=true; btn.textContent='Placing order…'; }
+  var reset = function(){
+    if(!btn) return;
+    btn.disabled=false;
+    btn.textContent = SMS_ON ? 'Confirm & place order 🍫' : 'Place order (COD) 🍫';
+  };
+
+  api('POST','/api/orders', body, function(ok, r){
+    if(!ok){
+      showErr(r.error || 'Could not place order. Please try again.');
+      reset();
+      if(!SMS_ON) loadCaptcha();   // the challenge was consumed by that attempt
+      return;
+    }
+    var o = r.order || {};
+    localStorage.removeItem('fudgio_cart'); updateCount();
+    CAPTCHA_ID=''; DETAILS=null;
+    orderDone(o.id||'', d.name, d.phone);
+  });
+}
+
+function orderDone(orderId, name, phone){
+  renderSteps(SMS_ON ? 3 : 2);
+  var trackUrl='/track?id='+encodeURIComponent(orderId)+'&phone='+encodeURIComponent(phone);
+  document.getElementById('root').innerHTML='<div class="empty"><div class="em">✅</div>'
+    +'<h1 style="font-family:var(--display)">Order placed!</h1>'
+    +'<p style="margin:6px 0 2px">Your tracking number is</p>'
+    +'<div style="font-family:var(--display);font-weight:900;font-size:1.8rem;color:var(--orange);letter-spacing:1px;margin:6px 0 4px">'+esc(orderId)+'</div>'
+    +'<p>Thanks, '+esc(name)+'! We\'ve received your order and will confirm shortly. Pay cash on delivery. 🍫<br>Save your tracking number to check your order status anytime.</p>'
+    +'<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px">'
+    +'<a href="'+trackUrl+'" class="btn btn-primary">📦 Track your order</a>'
+    +'<a href="/menu" class="btn btn-ghost">Order more</a></div></div>';
+  window.scrollTo(0,0);
+}
+
+/* ---- shell ---- */
+function render(){
+  var root=document.getElementById('root');
+  if(!getCart().length){
+    document.getElementById('stepsBar').innerHTML='';
+    root.innerHTML='<div class="empty"><div class="em">🛒</div><p>Your cart is empty.</p><a href="/menu" class="btn btn-primary" style="margin-top:18px">Browse the menu</a></div>';
+    updateCount(); return;
+  }
+  root.innerHTML='<div class="split"><div id="stepPanel"></div><div id="sumWrap">'+summaryHtml()+'</div></div>';
+  showDetails();
   updateCount();
 }
 /* Redraw only the totals. A full render() would wipe whatever the customer
@@ -198,42 +381,19 @@ function refreshSummary(){
   var w=document.getElementById('sumWrap');
   if(w) w.innerHTML=summaryHtml();
 }
-function place(){
-  var v=function(id){return (document.getElementById(id).value||'').trim();};
-  var name=v('fName'),phone=v('fPhone'),email=v('fEmail'),city=v('fCity'),addr=v('fAddr'),notes=v('fNotes');
-  var err=document.getElementById('err');
-  if(!name||!phone||!email||!city||!addr){ err.textContent='Please fill in name, phone, email, city and address.'; return; }
-  if(!validPhone(phone)){ err.textContent='Please enter a valid phone number (10–15 digits).'; return; }
-  if(!validEmail(email)){ err.textContent='Please enter a valid email address.'; return; }
-  if(city.toLowerCase()!=='lahore'){ err.textContent='Sorry, we currently deliver in Lahore only.'; return; }
-  var answer=(document.getElementById('fCaptcha').value||'').trim();
-  if(!CAPTCHA_ID){ err.textContent='The security check is still loading. Please wait a moment and try again.'; loadCaptcha(); return; }
-  if(!answer){ err.textContent='Please type the characters from the security image.'; document.getElementById('fCaptcha').focus(); return; }
-  err.textContent='';
-  var btn=document.getElementById('place'); btn.disabled=true; btn.textContent='Placing order…';
-  var cart=getCart();
-  var items=cart.map(function(i){return {productId:i.id,size:i.size,qty:i.qty};});
-  var customer={name:name,phone:phone,email:email,city:city,address:addr,notes:notes};
-  var orderId='';
-  try{ var x=new XMLHttpRequest(); x.open('POST','/api/orders',false); x.setRequestHeader('Content-Type','application/json'); x.send(JSON.stringify({items:items,customer:customer,captchaId:CAPTCHA_ID,captchaAnswer:answer}));
-    if(x.status>=200&&x.status<300){ var o=JSON.parse(x.responseText).order; if(o&&o.id) orderId=o.id; }
-    else { var e=JSON.parse(x.responseText); err.textContent=(e&&e.error)||'Could not place order. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; loadCaptcha(); return; }
-  }catch(ex){ err.textContent='Network error. Please try again.'; btn.disabled=false; btn.textContent='Place order (COD) 🍫'; loadCaptcha(); return; }
-  localStorage.removeItem('fudgio_cart'); updateCount(); CAPTCHA_ID='';
-  var trackUrl='/track?id='+encodeURIComponent(orderId)+'&phone='+encodeURIComponent(phone);
-  document.getElementById('root').innerHTML='<div class="empty"><div class="em">✅</div>'
-    +'<h1 style="font-family:var(--display)">Order placed!</h1>'
-    +'<p style="margin:6px 0 2px">Your tracking number is</p>'
-    +'<div style="font-family:var(--display);font-weight:900;font-size:1.8rem;color:var(--accent);letter-spacing:1px;margin:6px 0 4px">'+esc(orderId)+'</div>'
-    +'<p>Thanks, '+esc(name)+'! We\'ve received your order and will confirm shortly. Pay cash on delivery. 🍫<br>Save your tracking number to check your order status anytime.</p>'
-    +'<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px">'
-    +'<a href="'+trackUrl+'" class="btn btn-primary">📦 Track your order</a>'
-    +'<a href="/menu" class="btn btn-ghost">Order more</a></div></div>';
-  window.scrollTo(0,0);
-}
+
 render();
 loadLiveStock(refreshSummary);    // admin photos + live prices in the totals
-onStoreSettings(refreshSummary);  // real delivery fee / free-delivery threshold
+onStoreSettings(function(){
+  refreshSummary();               // real delivery fee / free-delivery threshold
+  // Whether an SMS gateway is configured decides if there is a verify step at
+  // all. Only redraw the form if we are still sitting on it.
+  if(SMS_ON !== !!FUDGIO_SMS){
+    SMS_ON = !!FUDGIO_SMS;
+    if(document.getElementById('stepPanel') && !DETAILS) showDetails();
+    else renderSteps(DETAILS ? 2 : 1);
+  }
+});
 </script>
 </body>
 </html>

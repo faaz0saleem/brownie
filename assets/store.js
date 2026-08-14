@@ -146,6 +146,9 @@ function validPhone(p){ var d=(p||'').replace(/\D/g,''); return d.length>=10 && 
    fraction of a second before this resolves. ---- */
 var FUDGIO_SLOGAN = 'Life is short. Eat the brownie. 🍫 Handcrafted brownies, delivered fresh across Lahore — Cash on Delivery.';
 var STORE_OPEN = true;
+/* True when an SMS gateway is configured server-side, which is what decides
+   whether checkout asks for a texted code. Read by checkout.html. */
+var FUDGIO_SMS = false;
 var _settingsWaiters = [];
 /** Runs fn once store settings have loaded (or immediately if already done). */
 function onStoreSettings(fn){ _settingsWaiters ? _settingsWaiters.push(fn) : fn(); }
@@ -159,6 +162,7 @@ function onStoreSettings(fn){ _settingsWaiters ? _settingsWaiters.push(fn) : fn(
     if(typeof d.freeDeliveryOver === 'number') FUDGIO.freeOver = d.freeDeliveryOver;
     if(d.currency) FUDGIO.currency = d.currency;
     if(d.storeOpen === false) STORE_OPEN = false;
+    FUDGIO_SMS = !!d.smsVerification;
   }
 
   function finish(){

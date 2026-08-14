@@ -91,6 +91,8 @@ try {
       'deliveryFee'      => (int)($s['deliveryFee'] ?? cfg()['deliveryFee']),
       'freeDeliveryOver' => (int)($s['freeDeliveryOver'] ?? cfg()['freeDeliveryOver']),
       'currency'         => cfg()['currency'],
+      // Tells the checkout whether to show the SMS verification step.
+      'smsVerification'  => sms_ready(),
     ]);
   }
 
@@ -157,6 +159,65 @@ try {
     out(['id'=>$r['id'], 'image'=>$r['image']]);
   }
 
+  // ---- SMS diagnostics (admin only) ----
+  // /api/diag/sms?token=<admin password>&to=03001234567
+  // Reports the gateway settings and the real error from a send attempt, so a
+  // misconfigured provider can be fixed rather than guessed at. Never echoes
+  // the API key or auth token.
+  if ($seg[0]==='diag' && ($seg[1]??'')==='sms') {
+    require_admin();
+    $c = sms_config();
+    $r = [
+      'provider'      => $c['provider'] ?: '(not set — phone verification is off)',
+      'smsReady'      => sms_ready(),
+      'from'          => $c['from'] ?: '(not set)',
+      'urlTemplateSet'=> $c['url'] !== '',
+      'method'        => $c['method'],
+      'twilioSidSet'  => $c['sid'] !== '',
+      'twilioTokenSet'=> $c['token'] !== '',
+      'successNeedle' => $c['okText'] ?: '(any HTTP 2xx counts as sent)',
+      'envLocalFound' => is_file(dirname(__DIR__).'/.env.local'),
+      'curlAvailable' => function_exists('curl_init'),
+    ];
+    $to = trim($_GET['to'] ?? '');
+    if ($to !== '') {
+      $e164 = sms_normalise($to);
+      $r['normalised'] = $e164 ?: '(not a valid Pakistani mobile number)';
+      if ($e164 !== '') {
+        [$ok, $err] = sms_send($e164, 'Fudgio test message. If you are reading this, SMS sending works.');
+        $r['testSendOk'] = $ok;
+        $r['testSendError'] = $ok ? '' : $err;
+      }
+    } else {
+      $r['hint'] = 'Add &to=03001234567 to actually send a test message.';
+    }
+    out($r);
+  }
+
+  // ---- phone verification (checkout) ----
+  if ($seg[0]==='verify' && ($seg[1]??'')==='phone') {
+    $action = $seg[2] ?? '';
+    if ($action==='send' && $method==='POST') {
+      $b = body();
+      // Sending an SMS costs money, so this endpoint is the one worth abusing.
+      // The CAPTCHA is spent here rather than at order time.
+      $cap = captcha_check((string)($b['captchaId'] ?? ''), (string)($b['captchaAnswer'] ?? ''));
+      if (isset($cap['error'])) err($cap['error']);
+      throttle('smssend', 25, 3600000);
+      $r = phone_otp_send((string)($b['phone'] ?? ''), client_ip());
+      isset($r['error']) ? err($r['error']) : out(['ok'=>true,'sent'=>true]);
+    }
+    if ($action==='check' && $method==='POST') {
+      $b = body();
+      $ip = client_ip();
+      if ($ip !== '' && rate_count('smscheck:'.$ip, 900000) >= 30) err('Too many attempts. Please try again later.', 429);
+      if ($ip !== '') rate_hit('smscheck:'.$ip, $ip);
+      $r = phone_otp_check((string)($b['phone'] ?? ''), (string)($b['code'] ?? ''));
+      isset($r['error']) ? err($r['error']) : out(['ok'=>true,'verified'=>true]);
+    }
+    err('Not found',404);
+  }
+
   // ---- products ----
   if ($seg[0]==='products') {
     if (count($seg)===1 && $method==='GET') { $admin=hash_equals(cfg()['adminToken'], (string)($_SERVER['HTTP_X_ADMIN_TOKEN']??'')); out(products_all($admin)); }
@@ -187,13 +248,43 @@ try {
       // per-email and per-phone rules that do the actual work.
       throttle('orderpost', 60, 3600000);
       $b=body(); $u=current_user();
-      // Prove a human is placing this. Checked before anything is written, and
-      // the challenge is consumed either way so one image cannot be reused.
-      $cap = captcha_check((string)($b['captchaId'] ?? ''), (string)($b['captchaAnswer'] ?? ''));
-      if (isset($cap['error'])) err($cap['error']);
       $cust=$b['customer']??[]; if($u && empty($cust['email'])) $cust['email']=$u['email'];
+      // Two ways to prove a real person is ordering, depending on what the shop
+      // is configured for. With an SMS gateway the phone number is confirmed by
+      // code, which is the stronger check and also gives a reachable number for
+      // a COD delivery. Without one, fall back to the image CAPTCHA so the shop
+      // still takes orders rather than refusing everyone.
+      if (sms_ready()) {
+        if (!phone_is_verified((string)($cust['phone'] ?? '')))
+          err('Please verify your phone number before placing the order.');
+      } else {
+        $cap = captcha_check((string)($b['captchaId'] ?? ''), (string)($b['captchaAnswer'] ?? ''));
+        if (isset($cap['error'])) err($cap['error']);
+      }
       $r=order_create($b['items']??[], $cust, $u['id']??null);
-      isset($r['error'])?err($r['error']):out(['order'=>$r['order']],201);
+      if (isset($r['error'])) err($r['error']);
+      // Single-use: the same confirmed number cannot be replayed for a second
+      // order without asking for a new code.
+      if (sms_ready()) phone_otp_consume((string)($cust['phone'] ?? ''));
+
+      // Answer the customer first, then send the owner's alert email, so the
+      // shopper is never left watching a spinner while we talk to an SMTP
+      // server. Content-Length plus Connection: close lets the browser treat
+      // the response as finished even where the request cannot be formally
+      // detached, and ignore_user_abort keeps the email going once it has.
+      $payload = json_encode(['order'=>$r['order']]);
+      http_response_code(201);
+      ignore_user_abort(true);
+      header('Content-Length: ' . strlen($payload));
+      header('Connection: close');
+      echo $payload;
+
+      if (function_exists('fastcgi_finish_request'))      fastcgi_finish_request();   // php-fpm
+      elseif (function_exists('litespeed_finish_request')) litespeed_finish_request(); // LiteSpeed
+      else { while (ob_get_level() > 0) @ob_end_flush(); @flush(); }
+
+      notify_order($r['order']);
+      exit;
     }
     require_admin();
     if (count($seg)===1 && $method==='GET') out(orders_all());

@@ -4,6 +4,7 @@
 // SQLite file so the app still runs for development. Mirrors the Node schema.
 declare(strict_types=1);
 require_once __DIR__ . '/mailer.php';
+require_once __DIR__ . '/sms.php';
 
 /* ---------------- .env loader ----------------------------------------------
    Two files, read in order:
@@ -495,7 +496,11 @@ function order_create(array $items, array $customer, ?string $userId): array {
   // Count this IP only now that an order really exists.
   if ($ip !== '') rate_hit('order:' . $ip, $ip);
 
-  notify_order($order);
+  // The owner's alert email is sent by the caller *after* the response has
+  // been flushed. Doing it here made the customer wait on an SMTP round trip
+  // to finish their checkout — and if the mail server is slow or unreachable,
+  // that wait is measured in tens of seconds for an order that has already
+  // been saved.
   return ['order' => $order];
 }
 
@@ -790,6 +795,110 @@ function captcha_image_data(string $code): string {
   $png = ob_get_clean();
   imagedestroy($im);
   return 'data:image/png;base64,' . base64_encode($png);
+}
+
+/* ---------------- phone verification (SMS) ----------------
+   Email codes were reaching spam and, for this shop's customers, a phone is
+   simply the more reliable channel. The code is stored hashed and the number
+   is normalised to E.164 first, so 0300-1234567 and +92 300 1234567 are the
+   same record rather than two.
+
+   Sending an SMS costs money, which makes /api/verify/phone/send a target
+   worth abusing on its own. It is CAPTCHA-gated in index.php, and the caps
+   below bound the damage per number and per IP even if that is defeated.
+   -------------------------------------------------------------------- */
+
+function phone_otp_table(): void {
+  db()->exec("CREATE TABLE IF NOT EXISTS phone_otp (
+    phone VARCHAR(24) PRIMARY KEY, code_hash VARCHAR(255), expires_at BIGINT,
+    attempts INT DEFAULT 0, sends INT DEFAULT 0, last_sent BIGINT,
+    verified_at BIGINT, created_at BIGINT)");
+}
+
+function phone_otp_row(string $e164): ?array {
+  phone_otp_table();
+  $st = db()->prepare("SELECT * FROM phone_otp WHERE phone=? LIMIT 1");
+  $st->execute([$e164]);
+  return $st->fetch() ?: null;
+}
+
+/** Sends a fresh code. Returns ['ok'=>true] or ['error'=>...]. */
+function phone_otp_send(string $phone, string $ip): array {
+  $e164 = sms_normalise($phone);
+  if ($e164 === '') return ['error' => 'Please enter a valid Pakistani mobile number, like 0300 1234567.'];
+  if (!sms_ready())  return ['error' => 'Phone verification is not available right now. Please contact us to order.'];
+
+  phone_otp_table();
+  $now = now_ms();
+  $row = phone_otp_row($e164);
+
+  if ($row) {
+    if ($row['last_sent'] !== null && $now - (int)$row['last_sent'] < 60000)
+      return ['error' => 'Please wait a minute before asking for another code.'];
+    if ((int)$row['sends'] >= (int) env('MAX_SMS_PER_NUMBER', '8') && $now - (int)$row['created_at'] < 86400000)
+      return ['error' => 'Too many codes sent to this number today. Please try again tomorrow or contact us.'];
+  }
+  // Per-IP cap, so one machine cannot spray codes at many different numbers.
+  if ($ip !== '' && rate_count('sms:' . $ip, 3600000) >= (int) env('MAX_SMS_PER_IP', '20'))
+    return ['error' => 'Too many verification attempts. Please try again later.'];
+  if ($ip !== '') rate_hit('sms:' . $ip, $ip);
+
+  $code = str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+  $expires = $now + 10 * 60 * 1000;
+  $brand = cfg()['brandName'];
+  $text = $code . ' is your ' . $brand . ' order verification code. It expires in 10 minutes.';
+
+  [$ok, $err] = sms_send($e164, $text);
+  if (!$ok) {
+    error_log('Fudgio SMS send failed to ' . $e164 . ': ' . $err);
+    return ['error' => 'We could not send the code right now. Please try again in a moment.'];
+  }
+
+  $hash = password_hash($code, PASSWORD_BCRYPT);
+  if ($row) {
+    db()->prepare("UPDATE phone_otp SET code_hash=?, expires_at=?, attempts=0, sends=sends+1, last_sent=?, verified_at=NULL WHERE phone=?")
+       ->execute([$hash, $expires, $now, $e164]);
+  } else {
+    db()->prepare("INSERT INTO phone_otp (phone,code_hash,expires_at,attempts,sends,last_sent,verified_at,created_at) VALUES (?,?,?,0,1,?,NULL,?)")
+       ->execute([$e164, $hash, $expires, $now, $now]);
+  }
+  return ['ok' => true, 'phone' => $e164];
+}
+
+/** Confirms a code. Wrong guesses are counted and capped. */
+function phone_otp_check(string $phone, string $code): array {
+  $e164 = sms_normalise($phone);
+  if ($e164 === '') return ['error' => 'Please enter a valid Pakistani mobile number.'];
+  $row = phone_otp_row($e164);
+  if (!$row)                                return ['error' => 'Please ask for a code first.'];
+  if ((int)$row['attempts'] >= 6)           return ['error' => 'Too many incorrect attempts. Please ask for a new code.'];
+  if (now_ms() > (int)$row['expires_at'])   return ['error' => 'That code has expired. Please ask for a new one.'];
+
+  db()->prepare("UPDATE phone_otp SET attempts=attempts+1 WHERE phone=?")->execute([$e164]);
+  if (!password_verify(trim($code), (string)$row['code_hash']))
+    return ['error' => 'That code is not correct. Please check and try again.'];
+
+  db()->prepare("UPDATE phone_otp SET verified_at=?, attempts=0 WHERE phone=?")->execute([now_ms(), $e164]);
+  return ['ok' => true];
+}
+
+/** A number counts as verified for a short window after confirming a code. */
+function phone_is_verified(string $phone): bool {
+  $e164 = sms_normalise($phone);
+  if ($e164 === '') return false;
+  $row = phone_otp_row($e164);
+  if (!$row || $row['verified_at'] === null) return false;
+  return (now_ms() - (int)$row['verified_at']) < 30 * 60 * 1000;   // 30 minutes
+}
+
+/** Single-use: clears the confirmation once an order has been placed on it. */
+function phone_otp_consume(string $phone): void {
+  $e164 = sms_normalise($phone);
+  if ($e164 === '') return;
+  try {
+    db()->prepare("UPDATE phone_otp SET verified_at=NULL, code_hash='', expires_at=0 WHERE phone=?")
+       ->execute([$e164]);
+  } catch (Throwable $e) { /* never block an order that already succeeded */ }
 }
 
 /* ---------------- visitor tracking ---------------- */

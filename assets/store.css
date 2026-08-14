@@ -733,6 +733,13 @@ h1,h2,h3,h4,p{overflow-wrap:break-word}
 .captcha-refresh:hover{color:var(--orange);border-color:var(--orange);transform:rotate(-90deg)}
 .captcha-input{letter-spacing:.35em;font-weight:900;text-transform:uppercase;text-align:center}
 .otp-note{font-size:.83rem;color:var(--ink-45);margin-top:9px}
+/* Text actions on the verification step (resend, go back). */
+.link-btn{
+  font-size:.86rem;font-weight:700;color:var(--ink-60);
+  padding:6px 0;transition:color .2s;
+}
+.link-btn:hover:not(:disabled){color:var(--orange)}
+.link-btn:disabled{color:var(--ink-30);cursor:not-allowed}
 
 @media(max-width:420px){
   /* Keep the image inside the panel on a narrow phone. */

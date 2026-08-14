@@ -91,9 +91,16 @@ function smtp_send(string $to, string $subject, string $text, string $html, int 
   $ctx = stream_context_create(['ssl' => [
     'verify_peer' => $strict, 'verify_peer_name' => $strict, 'allow_self_signed' => !$strict,
   ]]);
-  $fp = @stream_socket_client($host . ':' . $port, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
+  // Kept short on purpose. Order alerts are sent after the customer's response
+  // has been flushed, but on hosting without a request-detach function the PHP
+  // process still holds the connection, so a mail server that has gone away
+  // must not be able to stall a checkout for half a minute. A reachable server
+  // answers well inside this.
+  $connectTimeout = max(3, (int) env('SMTP_CONNECT_TIMEOUT', '8'));
+  $ioTimeout      = max(3, (int) env('SMTP_IO_TIMEOUT', '10'));
+  $fp = @stream_socket_client($host . ':' . $port, $errno, $errstr, $connectTimeout, STREAM_CLIENT_CONNECT, $ctx);
   if (!$fp) return [false, "cannot connect ({$errstr})"];
-  stream_set_timeout($fp, 20);
+  stream_set_timeout($fp, $ioTimeout);
 
   try {
     smtp_line($fp, '220');
