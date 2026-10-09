@@ -6,7 +6,12 @@ const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const RS = (n) => CUR + ' ' + Number(n).toLocaleString('en-US');
 let TOKEN = localStorage.getItem('fud_admin_token') || '';
-let STATUSES = ['Pending', 'Confirmed', 'Baking', 'Out for Delivery', 'Delivered', 'Cancelled'];
+let STATUSES = ['Awaiting Payment', 'Pending', 'Confirmed', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
+// Orders carry their own currency: rupees in Pakistan, dollars abroad.
+const MON = (o, n) => (o && o.currency === 'USD') ? '$' + Number(n).toLocaleString('en-US') : RS(n);
+// The bandana drawing from the shop (admin/art.js is a copy written by the build).
+const ART = (c, i) => (window.bandanaSVG ? bandanaSVG(c || '#FF6A13', i || '#FFFFFF') : '');
+const SWATCH = (c) => `<span class="sw-dot" style="background:${esc(c || '#ccc')}"></span>`;
 const ADMIN_RECAPTCHA = (window.FUDGIO_ADMIN && window.FUDGIO_ADMIN.recaptcha) || { enabled: false, siteKey: '' };
 let recaptchaScriptPromise = null;
 
@@ -96,7 +101,9 @@ const VIEW_META = {
   orders: ['Orders', 'Manage and track every order'],
   inventory: ['Products & Stock', 'Images, stock levels & product management'],
   customers: ['Customers', 'Your buyers and their locations'],
-  settings: ['Settings', 'Delivery, store availability & more']
+  settings: ['Settings', 'Delivery, the deal, payments & more'],
+  messages: ['Messages', 'From the contact and bulk-order forms'],
+  subscribers: ['Subscribers', 'People waiting for new colours']
 };
 document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -108,6 +115,8 @@ document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
     document.getElementById('viewTitle').textContent = VIEW_META[view][0];
     document.getElementById('viewSub').textContent = VIEW_META[view][1];
     if (view === 'settings') loadSettings();
+    if (view === 'messages') loadMessages();
+    if (view === 'subscribers') loadSubscribers();
   });
 });
 
@@ -122,19 +131,22 @@ async function loadDashboard() {
   const kpis = [
     { ico: '👀', label: 'Site visitors', value: t.visitors ?? 0, foot: `${t.pageViews ?? 0} total page views` },
     { ico: '📈', label: 'Visitors today', value: t.visitorsToday ?? 0, foot: `${t.viewsToday ?? 0} views today` },
-    { ico: '💰', label: 'Revenue', value: RS(t.revenue), foot: `${t.activeOrders} active orders` },
-    { ico: '🧾', label: 'Total orders', value: t.orders, foot: `${t.pendingOrders} in progress · ${t.deliveredOrders} delivered` },
-    { ico: '🍫', label: 'Brownies sold', value: t.unitsSold, foot: 'boxes delivered/pending' },
+    { ico: '💰', label: 'Revenue', value: RS(t.revenue), foot: `${RS(t.revenuePkr || 0)} + $${(t.revenueUsd || 0).toLocaleString('en-US')} abroad` },
+    { ico: '🧾', label: 'Total orders', value: t.orders, foot: `${t.pendingOrders} to handle · ${t.deliveredOrders} delivered` },
+    { ico: '⏳', label: 'Awaiting payment', value: t.awaitingPayment || 0, foot: `$${(t.awaitingPaymentUsd || 0).toLocaleString('en-US')} in international orders` },
+    { ico: '🧣', label: 'Bandanas sold', value: t.unitsSold, foot: `${t.bundleOrders || 0} orders used the bundle deal` },
+    { ico: '🌍', label: 'International', value: t.intlOrders || 0, foot: 'orders shipped abroad' },
     { ico: '👥', label: 'Customers', value: t.customers, foot: 'unique buyers' },
-    { ico: '📊', label: 'Avg order value', value: RS(t.avgOrderValue), foot: 'per order' },
-    { ico: '📦', label: 'Out of stock', value: t.outOfStock, foot: `${t.products} active products` }
+    { ico: '📊', label: 'Avg order value', value: RS(t.avgOrderValue), foot: 'per order, in rupees' },
+    { ico: '✉️', label: 'Messages', value: t.unreadMessages || 0, foot: `new · ${t.subscribers || 0} newsletter sign-ups` },
+    { ico: '📦', label: 'Out of stock', value: t.outOfStock, foot: `${t.products} colours on sale` }
   ];
   document.getElementById('kpiGrid').innerHTML = kpis.map((k) => `
     <div class="kpi"><span class="ico">${k.ico}</span><div class="label">${k.label}</div><div class="value">${k.value}</div><div class="foot">${k.foot}</div></div>`).join('');
 
   const alertEl = document.getElementById('lowStockAlert');
   alertEl.innerHTML = a.lowStock.length
-    ? `<div class="alert-strip">⚠️ Low / out of stock: ${a.lowStock.map((p) => `${esc(p.emoji)} ${esc(p.name)} (${p.stock})`).join(' · ')}</div>` : '';
+    ? `<div class="alert-strip">⚠️ Low / out of stock: ${a.lowStock.map((p) => `${SWATCH(p.color)} ${esc(p.name)} (${p.stock})`).join(' · ')}</div>` : '';
 
   const maxRev = Math.max(1, ...a.salesByDay.map((d) => d.revenue));
   document.getElementById('salesChart').innerHTML = a.salesByDay.map((d) => `
@@ -144,19 +156,19 @@ async function loadDashboard() {
 
   const maxUnits = Math.max(1, ...a.topProducts.map((p) => p.units));
   document.getElementById('topProducts').innerHTML = a.topProducts.length ? a.topProducts.map((p) => `
-    <div class="rank-item"><div class="r-emoji">${esc(p.emoji)}</div><div class="r-body">
+    <div class="rank-item"><div class="r-emoji">${SWATCH(p.color)}</div><div class="r-body">
       <div class="r-name"><span>${esc(p.name)}</span><span>${p.units} sold</span></div>
       <div class="r-track"><div class="r-fill" style="width:${(p.units / maxUnits) * 100}%"></div></div></div></div>`).join('')
-    : '<div class="empty-state"><div class="em">🍫</div>No sales yet.</div>';
+    : '<div class="empty-state"><div class="em">🧣</div>No sales yet.</div>';
 
   const maxCity = Math.max(1, ...a.cityBreakdown.map((c) => c.count));
   document.getElementById('cityBreakdown').innerHTML = a.cityBreakdown.length ? a.cityBreakdown.map((c) => `
     <div class="rank-item"><div class="r-emoji">📍</div><div class="r-body">
-      <div class="r-name"><span>${c.city}</span><span>${c.count} order(s)</span></div>
+      <div class="r-name"><span>${esc(c.city)}</span><span>${c.count} order(s)</span></div>
       <div class="r-track"><div class="r-fill" style="width:${(c.count / maxCity) * 100}%"></div></div></div></div>`).join('')
     : '<div class="empty-state"><div class="em">📍</div>No orders yet.</div>';
 
-  const statusEmoji = { Pending: '🕒', Confirmed: '✅', Baking: '👩‍🍳', 'Out for Delivery': '🚚', Delivered: '📦', Cancelled: '❌' };
+  const statusEmoji = { 'Awaiting Payment': '⏳', Pending: '🕒', Confirmed: '✅', Packed: '📦', Shipped: '✈️', 'Out for Delivery': '🚚', Delivered: '🏠', Cancelled: '❌' };
   const entries = Object.entries(a.statusCounts);
   const maxStatus = Math.max(1, ...entries.map(([, v]) => v));
   document.getElementById('statusBreakdown').innerHTML = entries.length ? entries.map(([status, count]) => `
@@ -188,7 +200,7 @@ async function loadDashboard() {
 }
 
 // ---------- Orders ----------
-const STATUS_CLASS = { Pending: 'b-pending', Confirmed: 'b-confirmed', Baking: 'b-confirmed', 'Out for Delivery': 'b-out', Delivered: 'b-delivered', Cancelled: 'b-cancelled' };
+const STATUS_CLASS = { 'Awaiting Payment': 'b-pending', Pending: 'b-pending', Confirmed: 'b-confirmed', Packed: 'b-confirmed', Shipped: 'b-out', 'Out for Delivery': 'b-out', Delivered: 'b-delivered', Cancelled: 'b-cancelled' };
 const fmtDate = (ts) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 let ORDERS = [];
 async function loadOrders() {
@@ -223,10 +235,10 @@ function renderOrders() {
     <tr>
       <td class="mono"><b>${esc(o.id)}</b></td>
       <td><b>${esc(o.customer.name)}</b><br/><span class="muted">${esc(o.customer.phone)}</span>${o.customer.email ? `<br/><span class="muted" style="font-size:.76rem">${esc(o.customer.email)}</span>` : ''}</td>
-      <td>${esc(o.customer.city)}<br/><span class="muted" style="font-size:.8rem">${esc(o.customer.address)}</span></td>
-      <td class="order-items">${o.items.map((i) => `<span class="oi">${esc(i.emoji)} ${i.qty}× ${esc(i.name)}${i.size ? ` <span class="muted">(${esc(i.size)})</span>` : ''}</span>`).join('<br/>')}</td>
-      <td class="mono"><b>${RS(o.total)}</b></td>
-      <td><span class="pill-cod">💵 COD</span></td>
+      <td>${esc(o.customer.city)}${o.customer.countryName && o.customer.country !== 'PK' ? ', <b>' + esc(o.customer.countryName) + '</b>' : ''}<br/><span class="muted" style="font-size:.8rem">${esc(o.customer.address)}${o.customer.postcode ? ' ' + esc(o.customer.postcode) : ''}</span></td>
+      <td class="order-items">${o.items.map((i) => `<span class="oi">${SWATCH(i.color)} ${i.qty}× ${esc(i.name)}</span>`).join('<br/>')}</td>
+      <td class="mono"><b>${MON(o, o.total)}</b>${o.discount ? `<br/><span class="muted" style="font-size:.76rem">−${MON(o, o.discount)} bundle</span>` : ''}</td>
+      <td>${o.currency === 'USD' ? '<span class="pill-cod" style="background:#ffe4f0;color:#b0105a">💳 Prepaid</span>' : '<span class="pill-cod">💵 COD</span>'}</td>
       <td class="muted" style="white-space:nowrap">${fmtDate(o.createdAt)}</td>
       <td>
         <span class="badge ${STATUS_CLASS[o.status]}" style="margin-bottom:6px;display:inline-flex">${o.status}</span><br/>
@@ -258,15 +270,18 @@ async function deleteOrder(id) {
 }
 function orderDetail(id) {
   const o = ORDERS.find((x) => x.id === id); if (!o) return;
-  const steps = ['Pending', 'Confirmed', 'Baking', 'Out for Delivery', 'Delivered'];
+  const steps = o.currency === 'USD' ? ['Awaiting Payment', 'Confirmed', 'Packed', 'Shipped', 'Delivered'] : ['Pending', 'Confirmed', 'Packed', 'Out for Delivery', 'Delivered'];
   const idx = steps.indexOf(o.status);
   const tl = o.status === 'Cancelled' ? '<div style="color:var(--bad);font-weight:700">✖ Cancelled</div>'
     : steps.map((s, i) => `<div style="color:${i <= idx ? 'var(--ok)' : 'var(--dim)'};font-weight:600">${i <= idx ? '●' : '○'} ${s}</div>`).join('');
   showModal(`<h3 style="font-size:1.3rem;margin-bottom:6px">${esc(o.id)}</h3>
     <span class="badge ${STATUS_CLASS[o.status]}">${o.status}</span>
-    <p style="margin:12px 0"><b>${esc(o.customer.name)}</b> · ${esc(o.customer.phone)}${o.customer.email ? ' · ' + esc(o.customer.email) : ''}<br>📍 ${esc(o.customer.address)}, ${esc(o.customer.city)}${o.customer.notes ? '<br><i>Note: ' + esc(o.customer.notes) + '</i>' : ''}</p>
-    <table style="width:100%;border-collapse:collapse">${o.items.map((i) => `<tr><td style="padding:6px 0">${esc(i.emoji)} ${i.qty}× ${esc(i.name)}${i.size ? ' (' + esc(i.size) + ')' : ''}</td><td style="text-align:right">${RS(i.lineTotal)}</td></tr>`).join('')}
-      <tr><td style="padding:8px 0;border-top:1px solid var(--line);font-weight:800">Total</td><td style="text-align:right;border-top:1px solid var(--line);font-weight:800">${RS(o.total)} (COD)</td></tr></table>
+    <p style="margin:12px 0"><b>${esc(o.customer.name)}</b> · ${esc(o.customer.phone)}${o.customer.email ? ' · ' + esc(o.customer.email) : ''}<br>📍 ${esc(o.customer.address)}, ${esc(o.customer.city)}${o.customer.postcode ? ' ' + esc(o.customer.postcode) : ''}, ${esc(o.customer.countryName || 'Pakistan')}${o.customer.notes ? '<br><i>Note: ' + esc(o.customer.notes) + '</i>' : ''}</p>
+    <table style="width:100%;border-collapse:collapse">${o.items.map((i) => `<tr><td style="padding:6px 0">${SWATCH(i.color)} ${i.qty}× ${esc(i.name)}${i.size ? ' (' + esc(i.size) + ')' : ''}</td><td style="text-align:right">${MON(o, i.lineTotal)}</td></tr>`).join('')}
+      <tr><td style="padding:6px 0;border-top:1px solid var(--line)">Subtotal</td><td style="text-align:right;border-top:1px solid var(--line)">${MON(o, o.subtotal)}</td></tr>
+      ${o.discount ? `<tr><td style="padding:6px 0">Bundle deal</td><td style="text-align:right">−${MON(o, o.discount)}</td></tr>` : ''}
+      <tr><td style="padding:6px 0">${o.currency === 'USD' ? 'Shipping' : 'Delivery'}</td><td style="text-align:right">${o.deliveryFee ? MON(o, o.deliveryFee) : 'Free'}</td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid var(--line);font-weight:800">Total</td><td style="text-align:right;border-top:1px solid var(--line);font-weight:800">${MON(o, o.total)} (${o.currency === 'USD' ? 'prepaid — ship once paid' : 'cash on delivery'})</td></tr></table>
     <h4 style="margin:16px 0 8px">Status timeline</h4><div style="display:flex;gap:16px;flex-wrap:wrap">${tl}</div>`);
 }
 function exportOrders() { window.location = API_BASE + '/export/orders?token=' + encodeURIComponent(TOKEN); }
@@ -283,26 +298,26 @@ async function loadInventory() {
   const addBar = document.getElementById('invAddBar');
   if (!addBar) {
     const bar = document.createElement('div'); bar.id = 'invAddBar'; bar.style.marginBottom = '16px';
-    bar.innerHTML = '<button class="btn-sm btn-save" style="max-width:180px" onclick="addProduct()">➕ Add new product</button>';
+    bar.innerHTML = '<button class="btn-sm btn-save" style="max-width:200px" onclick="addProduct()">➕ Add a colour</button>';
     grid.parentNode.insertBefore(bar, grid);
   }
   grid.innerHTML = products.map((p) => `
     <div class="inv-card">
-      <div class="inv-top" style="background:${esc(p.gradient)}">
+      <div class="inv-top" style="background:#efe8de">
         ${!p.active ? '<span class="inactive-flag">Hidden</span>' : ''}
-        ${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" class="inv-img">` : `<span class="inv-emoji">${esc(p.emoji)}</span>`}
+        ${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" class="inv-img">` : `<span class="inv-art">${ART(p.color, p.ink)}</span>`}
       </div>
       <div class="inv-body">
         <h4>${esc(p.name)} ${stockChip(p.stock)}</h4>
-        <div class="inv-meta">${p.containsNuts ? '🥜 Contains nuts · ' : ''}${esc((p.allergens || []).join(', ')) || '—'}</div>
+        <div class="inv-meta">${esc(p.tagline || '')} · <a href="https://fudgio.com/bandanas/${esc(p.slug)}" target="_blank" rel="noopener">view</a></div>
         <div class="inv-stats">
           <div><div class="n">${p.sold || 0}</div><div class="t">Sold</div></div>
           <div><div class="n">${p.stock}</div><div class="t">In stock</div></div>
           <div><div class="n">${RS((p.sold || 0) * p.price).replace(CUR + ' ', '')}</div><div class="t">Revenue</div></div>
         </div>
-        <div class="inv-row"><label>Price</label><input type="number" id="price-${p.id}" value="${p.price}" /></div>
+        <div class="inv-row"><label>Price (Rs)</label><input type="number" id="price-${p.id}" value="${(p.sizes && p.sizes[0] ? p.sizes[0].price : p.price)}" /></div>
+        <div class="inv-row"><label>Price ($)</label><input type="number" id="usd-${p.id}" value="${(p.sizes && p.sizes[0] && p.sizes[0].usd) || ''}" placeholder="auto" /></div>
         <div class="inv-row"><label>Stock</label><input type="number" id="stock-${p.id}" value="${p.stock}" /></div>
-        <div class="inv-sizes">${(p.sizes || []).map((s) => `<span>${esc(s.label)} · ${RS(s.price)}</span>`).join('') || '<span>No sizes set</span>'}</div>
         <div class="inv-actions">
           <button class="btn-sm btn-save" onclick="saveProduct('${p.id}')">💾 Save</button>
           <button class="btn-sm btn-toggle" onclick="editProductDetails('${p.id}')">✏️ Edit</button>
@@ -319,9 +334,12 @@ async function loadInventory() {
     </div>`).join('');
 }
 async function saveProduct(id) {
-  const price = document.getElementById('price-' + id).value;
+  const price = parseInt(document.getElementById('price-' + id).value, 10) || 0;
+  const usd = parseInt(document.getElementById('usd-' + id).value, 10) || 0;
   const stock = document.getElementById('stock-' + id).value;
-  await api('/products/' + id, { method: 'PATCH', body: JSON.stringify({ price, stock }) });
+  const size = { label: '55 cm square', pieces: 1, price };
+  if (usd > 0) size.usd = usd;
+  await api('/products/' + id, { method: 'PATCH', body: JSON.stringify({ price, stock, sizes: [size] }) });
   toast('Product updated ✓'); loadInventory(); loadDashboard();
 }
 async function toggleActive(id, active) {
@@ -335,7 +353,7 @@ async function markOutOfStock(id) {
 async function deleteProduct(id, name) {
   // Deleting removes it from the shop for good. Past orders are unaffected —
   // each order stores its own copy of the item's name, size and price.
-  if (!confirm(`Delete "${name}" from the shop permanently?\n\nPast orders keep their records. To just take it off the menu, use Hide instead.`)) return;
+  if (!confirm(`Delete "${name}" from the shop permanently?\n\nPast orders keep their records. To just take it off the shop, use Hide instead.`)) return;
   const res = await api('/products/' + id, { method: 'DELETE' });
   toast(res.ok ? 'Product deleted' : 'Delete failed');
   loadInventory(); loadDashboard();
@@ -437,59 +455,119 @@ function closeModal() { const m = document.getElementById('adminModal'); if (m) 
 async function loadSettings() {
   const el = document.getElementById('settingsBody'); if (!el) return;
   const s = await (await api('/settings')).json();
+  const row = (label, input, hint) => `<div class="inv-row"><label style="width:210px">${label}</label>${input}</div>${hint ? `<div class="muted" style="font-size:.8rem;margin:-4px 0 10px 220px">${hint}</div>` : ''}`;
+  const num = (id, v) => `<input type="number" id="${id}" value="${esc(v)}">`;
+  const txt = (id, v, ph) => `<input id="${id}" value="${esc(v || '')}" placeholder="${esc(ph || '')}">`;
   el.innerHTML = `
-    <div class="panel" style="max-width:560px">
-      <h3>🏪 Store settings</h3>
-      <div class="inv-row"><label style="width:170px">Delivery fee (${CUR})</label><input type="number" id="setFee" value="${s.deliveryFee}"></div>
-      <div class="inv-row"><label style="width:170px">Free delivery over (${CUR})</label><input type="number" id="setFree" value="${s.freeDeliveryOver}"></div>
-      <div class="inv-row"><label style="width:170px">Store open for orders</label>
-        <select id="setOpen"><option value="1" ${s.storeOpen ? 'selected' : ''}>Open</option><option value="0" ${!s.storeOpen ? 'selected' : ''}>Closed</option></select></div>
-      <div class="inv-row"><label style="width:170px">Announcement</label><input id="setAnn" value="${(s.announcement || '').replace(/"/g, '&quot;')}" placeholder="Optional banner text"></div>
-      <button class="btn-sm btn-save" style="margin-top:10px" onclick="saveSettings()">💾 Save settings</button>
-    </div>`;
+    <div class="two-col">
+    <div class="panel">
+      <h3>🇵🇰 Pakistan — cash on delivery</h3>
+      ${row('Delivery fee (Rs)', num('setFee', s.deliveryFee))}
+      ${row('Free delivery over (Rs)', num('setFree', s.freeDeliveryOver), '0 means delivery is never free.')}
+      ${row('Delivery time (days)', txt('setDaysPk', s.daysPk, '3–5'), 'Shown as “Delivered in 3–5 days”.')}
+      <h3 style="margin-top:22px">🌍 Worldwide — prepaid</h3>
+      ${row('Ship internationally', `<select id="setIntl"><option value="1" ${s.intlEnabled ? 'selected' : ''}>Yes</option><option value="0" ${!s.intlEnabled ? 'selected' : ''}>No — Pakistan only</option></select>`)}
+      ${row('Shipping ($)', num('setIntlShip', s.intlShipping), 'Flat, per order.')}
+      ${row('Free shipping over ($)', num('setIntlFree', s.intlFreeOver), '0 means shipping is never free.')}
+      ${row('Shipping time (days)', txt('setDaysIntl', s.daysIntl, '7–14'))}
+      ${row('Rupees per dollar', num('setRate', s.usdRate), 'Prices a colour with no $ price, and converts $ revenue on the dashboard.')}
+      ${row('Payment link', txt('setPayLink', s.intlPaymentLink, 'https://paypal.me/yourname'), 'Shown to international customers after they order. Blank = you email them a link.')}
+    </div>
+    <div class="panel">
+      <h3>🏷 The bundle deal</h3>
+      ${row('Bandanas needed', num('setBQty', s.bundleQty), 'Any colours count.')}
+      ${row('Discount (%)', num('setBPct', s.bundlePct), '0 turns the deal off everywhere on the site.')}
+      <h3 style="margin-top:22px">🏪 Store</h3>
+      ${row('Store open for orders', `<select id="setOpen"><option value="1" ${s.storeOpen ? 'selected' : ''}>Open</option><option value="0" ${!s.storeOpen ? 'selected' : ''}>Closed</option></select>`)}
+      ${row('Announcement bar', txt('setAnn', s.announcement, 'Blank = automatic delivery & deal message'))}
+      ${row('Instagram', txt('setIg', s.instagram, '@fudgio'))}
+      ${row('WhatsApp number', txt('setWa', s.whatsapp, '923001234567'), 'With country code, digits only.')}
+      <button class="btn-sm btn-save" style="margin-top:14px" onclick="saveSettings()">💾 Save settings</button>
+    </div></div>`;
 }
 async function saveSettings() {
-  const body = { deliveryFee: document.getElementById('setFee').value, freeDeliveryOver: document.getElementById('setFree').value,
-    storeOpen: document.getElementById('setOpen').value === '1', announcement: document.getElementById('setAnn').value };
+  const v = (id) => document.getElementById(id).value;
+  const body = { deliveryFee: v('setFee'), freeDeliveryOver: v('setFree'), daysPk: v('setDaysPk'),
+    intlEnabled: v('setIntl') === '1', intlShipping: v('setIntlShip'), intlFreeOver: v('setIntlFree'), daysIntl: v('setDaysIntl'),
+    usdRate: v('setRate'), intlPaymentLink: v('setPayLink'), bundleQty: v('setBQty'), bundlePct: v('setBPct'),
+    storeOpen: v('setOpen') === '1', announcement: v('setAnn'), instagram: v('setIg'), whatsapp: v('setWa') };
   const res = await api('/settings', { method: 'POST', body: JSON.stringify(body) });
   toast(res.ok ? 'Settings saved ✓' : 'Save failed');
+  if (res.ok) loadSettings();
 }
 
+// ---------- Messages ----------
+async function loadMessages() {
+  const el = document.getElementById('messagesBody'); if (!el) return;
+  const list = await (await api('/messages')).json();
+  el.innerHTML = list.length ? list.map((m) => `
+    <div class="msg ${m.status === 'new' ? 'is-new' : ''}">
+      <div class="msg-head"><b>${esc(m.name)}</b> <span class="badge ${m.status === 'new' ? 'b-pending' : m.status === 'done' ? 'b-delivered' : 'b-confirmed'}">${esc(m.status)}</span>
+        <span class="muted">${esc(m.topic)} · ${fmtDate(m.createdAt)}</span></div>
+      <div class="muted" style="font-size:.85rem"><a href="mailto:${esc(m.email)}?subject=${encodeURIComponent('Re: your message to Fudgio')}">${esc(m.email)}</a>${m.phone ? ' · ' + esc(m.phone) : ''}</div>
+      <p style="white-space:pre-wrap;margin:10px 0">${esc(m.body)}</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <a class="mini" href="mailto:${esc(m.email)}?subject=${encodeURIComponent('Re: your message to Fudgio')}" onclick="setMsg('${esc(m.id)}','read')">✉️ Reply</a>
+        ${m.status !== 'done' ? `<button class="mini" onclick="setMsg('${esc(m.id)}','done')">✅ Done</button>` : `<button class="mini" onclick="setMsg('${esc(m.id)}','new')">↩ Mark new</button>`}
+        <button class="mini danger" onclick="delMsg('${esc(m.id)}')">Delete</button>
+      </div>
+    </div>`).join('') : '<div class="empty-state"><div class="em">✉️</div>No messages yet.</div>';
+}
+async function setMsg(id, status) { await api('/messages/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ status }) }); loadMessages(); loadDashboard(); }
+async function delMsg(id) { if (!confirm('Delete this message?')) return; await api('/messages/' + encodeURIComponent(id), { method: 'DELETE' }); loadMessages(); loadDashboard(); }
+
+// ---------- Subscribers ----------
+async function loadSubscribers() {
+  const el = document.getElementById('subscribersBody'); if (!el) return;
+  const list = await (await api('/subscribers')).json();
+  el.innerHTML = `<div class="order-toolbar"><span class="muted">${list.length} sign-up(s)</span>
+      <button class="refresh-btn" onclick="window.location=API_BASE+'/export/subscribers?token='+encodeURIComponent(TOKEN)">⬇ Export CSV</button>
+      <button class="refresh-btn" onclick="copyEmails()">📋 Copy all emails</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Email</th><th>Signed up on</th><th>When</th><th></th></tr></thead><tbody>
+    ${list.length ? list.map((r) => `<tr><td class="mono">${esc(r.email)}</td><td class="muted">${esc(r.source)}</td><td class="muted">${fmtDate(r.createdAt)}</td>
+      <td><button class="mini danger" onclick="delSub('${esc(r.email)}')">Remove</button></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state"><div class="em">📬</div>No sign-ups yet.</div></td></tr>'}
+    </tbody></table></div>`;
+  window._subs = list;
+}
+async function delSub(email) { if (!confirm('Remove ' + email + '?')) return; await api('/subscribers/' + encodeURIComponent(email), { method: 'DELETE' }); loadSubscribers(); }
+function copyEmails() { const t = (window._subs || []).map((r) => r.email).join(', '); navigator.clipboard && navigator.clipboard.writeText(t).then(() => toast('Copied ' + (window._subs || []).length + ' emails')); }
+
 // ---------- Product add / full edit ----------
+// Every bandana is the same print; a product is a colour. Pick the ground
+// colour and the colour the print is drawn in, and the shop draws it.
 function productForm(p) {
-  p = p || { name: '', tagline: '', description: '', price: 900, stock: 30, emoji: '🍫', gradient: 'linear-gradient(135deg,#5b3a29,#2b1a12)', flavors: [], allergens: [], sizes: [], containsNuts: false, featured: false };
-  const sizes = (p.sizes && p.sizes.length ? p.sizes : [{ label: 'Box of 6', price: p.price }]).map((s) => `${s.label}:${s.price}`).join(', ');
-  return `<h3 style="font-size:1.3rem;margin-bottom:14px">${p.id ? 'Edit' : 'Add'} product</h3>
-    <div class="inv-row"><label style="width:120px">Name</label><input id="pfName" value="${esc(p.name)}"></div>
-    <div class="inv-row"><label style="width:120px">Tagline</label><input id="pfTag" value="${esc(p.tagline)}"></div>
-    <div class="inv-row"><label style="width:120px">Description</label><input id="pfDesc" value="${esc(p.description)}"></div>
-    <div class="inv-row"><label style="width:120px">Emoji</label><input id="pfEmoji" value="${esc(p.emoji || '🍫')}" style="max-width:90px"></div>
-    <div class="inv-row"><label style="width:120px">Base price</label><input type="number" id="pfPrice" value="${p.price}"></div>
+  p = p || { name: '', tagline: '', description: '', stock: 30, color: '#FF6A13', ink: '#FFFFFF', sizes: [{ price: 4200, usd: 15 }], featured: true };
+  const sz = (p.sizes && p.sizes[0]) || { price: p.price || 4200, usd: 15 };
+  return `<h3 style="font-size:1.3rem;margin-bottom:14px">${p.id ? 'Edit' : 'Add a'} colour</h3>
+    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      <div id="pfPreview" style="width:150px;flex:none;box-shadow:0 18px 30px -16px rgba(0,0,0,.5)">${ART(p.color, p.ink)}</div>
+      <div style="flex:1;min-width:260px">
+        <div class="inv-row"><label style="width:120px">Name</label><input id="pfName" value="${esc(p.name)}" placeholder="e.g. Sky Blue"></div>
+        <div class="inv-row"><label style="width:120px">Ground colour</label><input type="color" id="pfColor" value="${esc(p.color || '#FF6A13')}" oninput="pfRedraw()"></div>
+        <div class="inv-row"><label style="width:120px">Print colour</label><input type="color" id="pfInk" value="${esc(p.ink || '#FFFFFF')}" oninput="pfRedraw()"></div>
+      </div>
+    </div>
+    <div class="inv-row"><label style="width:120px">Tagline</label><input id="pfTag" value="${esc(p.tagline)}" placeholder="A few words"></div>
+    <div class="inv-row"><label style="width:120px">Description</label><textarea id="pfDesc" rows="3" style="flex:1">${esc(p.description)}</textarea></div>
+    <div class="inv-row"><label style="width:120px">Price (Rs)</label><input type="number" id="pfPrice" value="${sz.price}"></div>
+    <div class="inv-row"><label style="width:120px">Price ($)</label><input type="number" id="pfUsd" value="${sz.usd || ''}" placeholder="auto from Rs"></div>
     <div class="inv-row"><label style="width:120px">Stock</label><input type="number" id="pfStock" value="${p.stock}"></div>
-    <div class="inv-row"><label style="width:120px">Sizes</label><input id="pfSizes" value="${esc(sizes)}" placeholder="Single brownie:190, Box of 6:900, Box of 9:1290"></div>
-    <div class="inv-row"><label style="width:120px">Flavours</label><input id="pfFlav" value="${esc((p.flavors || []).join(', '))}"></div>
-    <div class="inv-row"><label style="width:120px">Allergens</label><input id="pfAll" value="${esc((p.allergens || []).join(', '))}"></div>
-    <div class="inv-row"><label style="width:120px">Contains nuts</label><select id="pfNuts"><option value="0" ${!p.containsNuts ? 'selected' : ''}>No</option><option value="1" ${p.containsNuts ? 'selected' : ''}>Yes</option></select></div>
-    <div class="inv-row"><label style="width:120px">Featured</label><select id="pfFeat"><option value="0" ${!p.featured ? 'selected' : ''}>No</option><option value="1" ${p.featured ? 'selected' : ''}>Yes</option></select></div>
+    <div class="inv-row"><label style="width:120px">Order in shop</label><input type="number" id="pfSort" value="${p.sort || 0}"></div>
     <button class="btn-sm btn-save" style="margin-top:10px" onclick="submitProduct('${p.id || ''}')">💾 Save</button>`;
 }
-function parseSizes(str) {
-  return str.split(',').map((s) => s.trim()).filter(Boolean).map((pair) => {
-    const idx = pair.lastIndexOf(':'); return { label: pair.slice(0, idx).trim() || 'Box', price: parseInt(pair.slice(idx + 1), 10) || 0 };
-  });
-}
+function pfRedraw() { document.getElementById('pfPreview').innerHTML = ART(document.getElementById('pfColor').value, document.getElementById('pfInk').value); }
 function addProduct() { showModal(productForm(null)); }
 async function editProductDetails(id) { const p = (await (await api('/products')).json()).find((x) => x.id === id); showModal(productForm(p)); }
 async function submitProduct(id) {
   const v = (x) => document.getElementById(x).value;
-  const data = { name: v('pfName'), tagline: v('pfTag'), description: v('pfDesc'), emoji: v('pfEmoji'),
-    price: v('pfPrice'), stock: v('pfStock'), sizes: parseSizes(v('pfSizes')),
-    flavors: v('pfFlav').split(',').map((s) => s.trim()).filter(Boolean),
-    allergens: v('pfAll').split(',').map((s) => s.trim()).filter(Boolean),
-    containsNuts: v('pfNuts') === '1', featured: v('pfFeat') === '1' };
+  if (!v('pfName').trim()) { toast('Give the colour a name'); return; }
+  const size = { label: '55 cm square', pieces: 1, price: parseInt(v('pfPrice'), 10) || 0 };
+  if (parseInt(v('pfUsd'), 10) > 0) size.usd = parseInt(v('pfUsd'), 10);
+  const data = { name: v('pfName').trim(), tagline: v('pfTag'), description: v('pfDesc'), color: v('pfColor'), ink: v('pfInk'),
+    price: size.price, stock: v('pfStock'), sort: parseInt(v('pfSort'), 10) || 0, sizes: [size], featured: true };
   const res = id ? await api('/products/' + id, { method: 'PATCH', body: JSON.stringify(data) })
                  : await api('/products', { method: 'POST', body: JSON.stringify(data) });
-  if (res.ok) { toast('Product saved ✓'); closeModal(); loadInventory(); loadDashboard(); } else toast('Save failed');
+  if (res.ok) { toast('Saved ✓ — it shows in the shop straight away'); closeModal(); loadInventory(); loadDashboard(); } else toast('Save failed');
 }
 
 /* ================= EXTRA ADMIN FUNCTIONS ================= */
@@ -497,19 +575,20 @@ async function submitProduct(id) {
 // --- 1. Print / packing slip for an order ---
 function printOrder(id){
   var o=ORDERS.find(function(x){return x.id===id;}); if(!o) return;
-  var rows=o.items.map(function(i){return '<tr><td>'+i.qty+'× '+esc(i.name)+(i.size?' ('+esc(i.size)+')':'')+'</td><td style="text-align:right">'+RS(i.lineTotal)+'</td></tr>';}).join('');
+  var rows=o.items.map(function(i){return '<tr><td>'+i.qty+'× '+esc(i.name)+' bandana'+(i.size?' ('+esc(i.size)+')':'')+'</td><td style="text-align:right">'+MON(o,i.lineTotal)+'</td></tr>';}).join('');
+  if(o.discount) rows+='<tr><td>Bundle deal</td><td style="text-align:right">−'+MON(o,o.discount)+'</td></tr>';
   var w=window.open('','_blank','width=620,height=760');
   w.document.write('<html><head><title>'+esc(o.id)+' — Fudgio</title><style>'
     +'body{font-family:Arial,sans-serif;padding:28px;color:#222}h1{margin:0 0 4px;font-size:22px}'
     +'.muted{color:#666;font-size:13px}table{width:100%;border-collapse:collapse;margin:16px 0}'
     +'td{padding:7px 0;border-bottom:1px solid #eee}.tot td{font-weight:800;border-top:2px solid #333;border-bottom:none}'
     +'.box{border:1px solid #ddd;border-radius:8px;padding:14px;margin-top:14px}</style></head><body>'
-    +'<h1>🍫 Fudgio — Packing Slip</h1><div class="muted">Order '+esc(o.id)+' · '+esc(fmtDate(o.createdAt))+' · '+esc(o.status)+'</div>'
+    +'<h1>FUDGIO — Packing Slip</h1><div class="muted">Order '+esc(o.id)+' · '+esc(fmtDate(o.createdAt))+' · '+esc(o.status)+'</div>'
     +'<div class="box"><b>'+esc(o.customer.name)+'</b><br>'+esc(o.customer.phone)+(o.customer.email?'<br>'+esc(o.customer.email):'')
-    +'<br>'+esc(o.customer.address)+', '+esc(o.customer.city)+(o.customer.notes?'<br><i>Note: '+esc(o.customer.notes)+'</i>':'')+'</div>'
-    +'<table>'+rows+'<tr><td>Delivery</td><td style="text-align:right">'+(o.deliveryFee===0?'FREE':RS(o.deliveryFee))+'</td></tr>'
-    +'<tr class="tot"><td>TOTAL (Cash on Delivery)</td><td style="text-align:right">'+RS(o.total)+'</td></tr></table>'
-    +'<p class="muted">Thank you for ordering from Fudgio 💛</p></body></html>');
+    +'<br>'+esc(o.customer.address)+', '+esc(o.customer.city)+(o.customer.postcode?' '+esc(o.customer.postcode):'')+', '+esc(o.customer.countryName||'Pakistan')+(o.customer.notes?'<br><i>Note: '+esc(o.customer.notes)+'</i>':'')+'</div>'
+    +'<table>'+rows+'<tr><td>'+(o.currency==='USD'?'Shipping':'Delivery')+'</td><td style="text-align:right">'+(o.deliveryFee===0?'FREE':MON(o,o.deliveryFee))+'</td></tr>'
+    +'<tr class="tot"><td>TOTAL ('+(o.currency==='USD'?'Prepaid':'Cash on Delivery — collect this')+')</td><td style="text-align:right">'+MON(o,o.total)+'</td></tr></table>'
+    +'<p class="muted">Thank you for wearing Fudgio.</p></body></html>');
   w.document.close(); w.print();
 }
 
@@ -519,7 +598,7 @@ function contactCustomer(id, how){
   var phone=(o.customer.phone||'').replace(/\D/g,'');
   if(how==='call') location.href='tel:'+phone;
   else if(how==='wa'){
-    var msg='Hi '+o.customer.name+', this is Fudgio about your order '+o.id+' ('+RS(o.total)+', Cash on Delivery). ';
+    var msg='Hi '+o.customer.name+', this is Fudgio about your order '+o.id+' ('+MON(o,o.total)+(o.currency==='USD'?(o.status==='Awaiting Payment'?'). Here is your payment link: ':'). '):', cash on delivery). ');
     var wa=phone.replace(/^0/,'92');
     window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank');
   } else if(how==='mail' && o.customer.email){
@@ -549,26 +628,27 @@ async function restockAll(){
 async function customerDetail(id,name){
   var orders=await (await api('/users/'+id+'/orders')).json();
   var rows=orders.length?orders.map(function(o){
-    return '<tr><td><b>'+o.id+'</b></td><td>'+fmtDate(o.createdAt)+'</td><td>'+RS(o.total)+'</td><td><span class="badge '+STATUS_CLASS[o.status]+'">'+o.status+'</span></td></tr>';
+    return '<tr><td><b>'+esc(o.id)+'</b></td><td>'+fmtDate(o.createdAt)+'</td><td>'+MON(o,o.total)+'</td><td><span class="badge '+STATUS_CLASS[o.status]+'">'+esc(o.status)+'</span></td></tr>';
   }).join(''):'<tr><td colspan="4" class="muted">No orders.</td></tr>';
-  var spend=orders.filter(function(o){return o.status!=='Cancelled';}).reduce(function(s,o){return s+o.total;},0);
-  showModal('<h3 style="font-size:1.3rem;margin-bottom:4px">'+name+'</h3>'
+  var spend=orders.filter(function(o){return o.status!=='Cancelled' && o.currency!=='USD';}).reduce(function(s,o){return s+o.total;},0);
+  showModal('<h3 style="font-size:1.3rem;margin-bottom:4px">'+esc(name)+'</h3>'
     +'<div class="muted" style="margin-bottom:14px">'+orders.length+' order(s) · '+RS(spend)+' lifetime</div>'
     +'<table style="width:100%;border-collapse:collapse">'+rows+'</table>');
 }
 
 // --- 6. Revenue report by period ---
 async function revenueReport(){
-  var orders=ORDERS.filter(function(o){return o.status!=='Cancelled';});
-  var now=Date.now(), day=864e5;
-  function sum(days){ var c=now-days*day; return orders.filter(function(o){return o.createdAt>=c;}).reduce(function(s,o){return s+o.total;},0); }
+  var orders=ORDERS.filter(function(o){return o.status!=='Cancelled' && o.status!=='Awaiting Payment';});
+  var now=Date.now(), day=864e5, rate=280;
+  try{ rate=(await (await api('/settings')).json()).usdRate||280; }catch(e){}
+  function sum(days){ var c=now-days*day; return orders.filter(function(o){return o.createdAt>=c;}).reduce(function(s,o){return s+(o.currency==='USD'?o.total*rate:o.total);},0); }
   function cnt(days){ var c=now-days*day; return orders.filter(function(o){return o.createdAt>=c;}).length; }
   var rows=[['Today',1],['Last 7 days',7],['Last 30 days',30],['Last 90 days',90],['All time',36500]]
     .map(function(r){ return '<tr><td>'+r[0]+'</td><td style="text-align:right">'+cnt(r[1])+'</td><td style="text-align:right"><b>'+RS(sum(r[1]))+'</b></td></tr>'; }).join('');
   showModal('<h3 style="font-size:1.3rem;margin-bottom:14px">💰 Revenue report</h3>'
     +'<table style="width:100%;border-collapse:collapse">'
     +'<tr><th style="text-align:left">Period</th><th style="text-align:right">Orders</th><th style="text-align:right">Revenue</th></tr>'
-    +rows+'</table><p class="muted" style="margin-top:12px;font-size:.82rem">Cancelled orders excluded.</p>');
+    +rows+'</table><p class="muted" style="margin-top:12px;font-size:.82rem">In rupees; dollar orders converted at Rs '+rate+'. Cancelled and unpaid orders excluded.</p>');
 }
 
 // --- 7. Export customers to CSV ---
@@ -584,18 +664,16 @@ async function exportCustomers(){
   toast('Customers exported');
 }
 
-// --- 8. Today's kitchen list (what to bake) ---
+// --- 8. Packing list: every bandana to pack right now, by colour ---
 function kitchenList(){
-  var todayStart=new Date(); todayStart.setHours(0,0,0,0);
-  var live=ORDERS.filter(function(o){return ['Pending','Confirmed','Baking'].indexOf(o.status)>=0;});
-  var tally={};
-  live.forEach(function(o){ o.items.forEach(function(i){
-    var k=i.name+(i.size?' — '+i.size:''); tally[k]=(tally[k]||0)+i.qty; }); });
+  var live=ORDERS.filter(function(o){return ['Pending','Confirmed'].indexOf(o.status)>=0;});
+  var tally={}, colour={};
+  live.forEach(function(o){ o.items.forEach(function(i){ tally[i.name]=(tally[i.name]||0)+i.qty*(i.pieces||1); colour[i.name]=i.color; }); });
   var keys=Object.keys(tally).sort();
-  var rows=keys.length?keys.map(function(k){return '<tr><td>'+k+'</td><td style="text-align:right"><b>'+tally[k]+'</b></td></tr>';}).join('')
-    :'<tr><td colspan="2" class="muted">Nothing to bake right now.</td></tr>';
-  showModal('<h3 style="font-size:1.3rem;margin-bottom:4px">👩‍🍳 Kitchen list</h3>'
-    +'<div class="muted" style="margin-bottom:14px">Everything in Pending / Confirmed / Baking</div>'
+  var rows=keys.length?keys.map(function(k){return '<tr><td style="padding:6px 0">'+SWATCH(colour[k])+' '+esc(k)+'</td><td style="text-align:right"><b>'+tally[k]+'</b></td></tr>';}).join('')
+    :'<tr><td colspan="2" class="muted">Nothing to pack right now.</td></tr>';
+  showModal('<h3 style="font-size:1.3rem;margin-bottom:4px">📦 Packing list</h3>'
+    +'<div class="muted" style="margin-bottom:14px">'+live.length+' order(s) in Pending / Confirmed. Unpaid international orders are left out.</div>'
     +'<table style="width:100%;border-collapse:collapse">'+rows+'</table>');
 }
 
@@ -612,10 +690,10 @@ async function quickToggleStore(){
 // --- 10. Edit the site slogan / announcement ---
 async function editSlogan(){
   var s=await (await api('/settings')).json();
-  var v=prompt('Slogan shown at the top of every page (leave blank for the default):', s.announcement||'');
+  var v=prompt('Announcement shown at the top of every page (leave blank for the automatic delivery & deal message):', s.announcement||'');
   if(v===null) return;
   await api('/settings',{method:'POST',body:JSON.stringify({announcement:v})});
-  toast('Slogan updated');
+  toast('Announcement updated');
 }
 
 // --- Wire the new buttons into the UI once the app is shown ---
@@ -625,12 +703,12 @@ function ensureQuickBar(){
   if(!top) return;
   var bar=document.createElement('div');
   bar.id='quickBar'; bar.className='order-toolbar'; bar.style.marginBottom='18px';
-  bar.innerHTML='<button class="refresh-btn" onclick="kitchenList()">👩‍🍳 Kitchen list</button>'
+  bar.innerHTML='<button class="refresh-btn" onclick="kitchenList()">📦 Packing list</button>'
     +'<button class="refresh-btn" onclick="revenueReport()">💰 Revenue report</button>'
     +'<button class="refresh-btn" onclick="bulkAdvance()">✅ Confirm all pending</button>'
     +'<button class="refresh-btn" onclick="restockAll()">📦 Restock all</button>'
     +'<button class="refresh-btn" onclick="exportCustomers()">⬇ Export customers</button>'
-    +'<button class="refresh-btn" onclick="editSlogan()">📣 Edit slogan</button>'
+    +'<button class="refresh-btn" onclick="editSlogan()">📣 Announcement</button>'
     +'<button class="refresh-btn" onclick="quickToggleStore()">🏪 Open/Close store</button>';
   top.parentNode.insertBefore(bar, top.nextSibling);
 }

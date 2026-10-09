@@ -200,3 +200,14 @@ select.status-select:focus { outline: none; border-color: var(--brand); }
 .admin-modal .am-inner{position:relative;width:min(560px,100%);max-height:90vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px;box-shadow:0 30px 60px -20px rgba(0,0,0,.6)}
 .admin-modal .am-close{position:absolute;top:12px;right:16px;background:none;border:none;color:var(--dim);font-size:1.6rem;cursor:pointer}
 .admin-modal table td{padding:6px 0;border:none}
+
+/* bandana colours */
+.sw-dot{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.inv-top:has(.inv-art){display:grid;place-items:center}
+.inv-art{display:block;height:82%;aspect-ratio:1;box-shadow:0 18px 30px -16px rgba(0,0,0,.5)}
+.inv-art svg{display:block;width:100%}
+#pfPreview svg{display:block;width:100%}
+.msg{border:1px solid var(--line,#eee);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.msg.is-new{border-color:#ff6a13;box-shadow:0 0 0 3px rgba(255,106,19,.12)}
+.msg-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+a.mini{text-decoration:none;display:inline-flex;align-items:center}

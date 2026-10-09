@@ -304,7 +304,7 @@ add('shop.html', {
   title: 'Shop Bandanas — One Print in 8 Colours | Fudgio',
   desc: `All eight Fudgio bandanas: Classic Red, Jet Black, Navy, Forest Green, Mustard, Bone, Plum and Rust. 100% cotton, 55 cm square, from ${rs(ONE.price)} or $${ONE.usd}. Buy any ${D.bundleQty}, save ${D.bundlePct}%.`,
   ld: [{ '@type': 'ItemList', name: 'Fudgio bandanas', itemListElement: P.map((p, i) => ({ '@type': 'ListItem', position: i + 1, name: p.name + ' bandana', url: SITE + p.path })) }, crumbs([['Home', '/'], ['Shop', '/shop']])],
-}, pageHead('Shop / ' + P.length + ' colours', 'Every colour,<br>one great print.', `100% cotton, 55 cm square, hemmed by hand. <span data-from>From ${rs(ONE.price)}</span> — and any ${D.bundleQty} take ${D.bundlePct}% off.`, 'Shop')
+}, pageHead('Shop / ' + P.length + ' colours', 'Every colour,<br>one great print.', `100% cotton, 55 cm square, hemmed edges. <span data-from>From ${rs(ONE.price)}</span> — and any ${D.bundleQty} take ${D.bundlePct}% off.`, 'Shop')
   + `<section class="paper"><div class="wrap sec"><div class="deal-meter" data-deal-meter hidden></div>${grid()}${perks()}</div></section>` + band() + wear());
 
 // Product pages
@@ -464,6 +464,9 @@ add('404.html', { url: '/404', index: false, title: 'Page not found | Fudgio', d
 /* ---------------- write ---------------- */
 for (const pg of pages) w(pg.file, pg.html);
 console.log('wrote', pages.length, 'pages');
+
+// The admin lives on its own subdomain, so it gets its own copy of the print.
+w('admin/art.js', r('assets/art.js'));
 
 w('robots.txt', `# Fudgio — ${SITE}\nUser-agent: *\nAllow: /\n\nDisallow: /cart\nDisallow: /checkout\nDisallow: /track\nDisallow: /bandana\nDisallow: /api/\nDisallow: /admin/\n\nSitemap: ${SITE}/sitemap.xml\n`);
 const today = new Date().toISOString().slice(0, 10);

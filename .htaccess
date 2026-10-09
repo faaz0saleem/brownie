@@ -11,14 +11,11 @@ RewriteRule ^api/(.*)$   api/index.php  [L,QSA]
 RewriteCond %{HTTP_HOST} ^(www\.)?fudgio\.com$ [NC]
 RewriteRule ^$ index.html [L]
 
-# --- Old product URLs -> the real per-brownie pages (301, keeps any ranking) ---
-RewriteCond %{QUERY_STRING} (^|&)b=chocolate(&|$)
-RewriteRule ^product/?$ /brownies/classic-chocolate? [R=301,L]
-RewriteCond %{QUERY_STRING} (^|&)b=nutty-delight(&|$)
-RewriteRule ^product/?$ /brownies/nutty-delight? [R=301,L]
-RewriteCond %{QUERY_STRING} (^|&)b=salted-caramel(&|$)
-RewriteRule ^product/?$ /brownies/salted-caramel? [R=301,L]
-RewriteRule ^product/?$ /menu? [R=301,L]
+# --- Retired brownie-era URLs -> the bandana pages (301, keeps any ranking) ---
+RewriteRule ^(menu|product|gifting)/?$ /shop? [R=301,L]
+RewriteRule ^brownies(/.*)?$ /shop? [R=301,L]
+RewriteRule ^delivery/?$ /shipping [R=301,L]
+RewriteRule ^ingredients/?$ /care [R=301,L]
 
 # --- One canonical hostname: www -> non-www, so ranking isn't split ---
 RewriteCond %{HTTP_HOST} ^www\.fudgio\.com$ [NC]
@@ -34,6 +31,7 @@ RewriteCond %{REQUEST_FILENAME}\.html -f
 RewriteRule ^(.+?)/?$ $1.html [L]
 
 DirectoryIndex index.html index.php
+ErrorDocument 404 /404.html
 
 # --- Protect sensitive files ---
 <FilesMatch "(^\.env|^\.|\.(git|md|lock|sqlite|db|ini|log|bak|sql|yml|yaml)$|package(-lock)?\.json$)">
