@@ -467,6 +467,7 @@ console.log('wrote', pages.length, 'pages');
 
 // The admin lives on its own subdomain, so it gets its own copy of the print.
 w('admin/art.js', r('assets/art.js'));
+w('admin/favicon.svg', r('assets/favicon.svg'));
 
 w('robots.txt', `# Fudgio — ${SITE}\nUser-agent: *\nAllow: /\n\nDisallow: /cart\nDisallow: /checkout\nDisallow: /track\nDisallow: /bandana\nDisallow: /api/\nDisallow: /admin/\n\nSitemap: ${SITE}/sitemap.xml\n`);
 const today = new Date().toISOString().slice(0, 10);

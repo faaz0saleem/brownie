@@ -19,6 +19,8 @@ var FUDGIO = {
 };
 // The build writes the .env defaults next to the catalogue, so even the first
 // paint quotes the shop's real prices and fees.
+// What has arrived from the API so far (see the bottom of this file).
+var _ready = { catalog: false, settings: false };
 if (typeof FUDGIO_DEFAULTS !== 'undefined') for (var _k in FUDGIO_DEFAULTS) FUDGIO[_k] = FUDGIO_DEFAULTS[_k];
 
 /* ---------------- catalogue ---------------- */
@@ -89,7 +91,18 @@ function lineArt(i){
 }
 
 /* ---------------- bag ---------------- */
-function getCart(){ try{ var c = JSON.parse(localStorage.getItem('fudgio_cart')||'[]'); return Object.prototype.toString.call(c)==='[object Array]' ? c.filter(function(i){ return i && i.id && i.qty > 0; }) : []; }catch(e){ return []; } }
+/* Every bandana line carries its colours. A line without them was saved by
+   the old brownie shop in a returning visitor's browser — it can't be bought
+   any more and would show a brownie photo, so it is dropped on sight. */
+function getCart(){
+  try{
+    var raw = JSON.parse(localStorage.getItem('fudgio_cart')||'[]');
+    if(Object.prototype.toString.call(raw) !== '[object Array]') return [];
+    var c = raw.filter(function(i){ return i && i.id && i.qty > 0 && i.color && i.key === i.id; });
+    if(c.length !== raw.length) localStorage.setItem('fudgio_cart', JSON.stringify(c));
+    return c;
+  }catch(e){ return []; }
+}
 function saveCart(c){ try{ localStorage.setItem('fudgio_cart', JSON.stringify(c)); }catch(e){} emit(); }
 function cartUnits(){ return getCart().reduce(function(s,i){ return s + i.qty * (i.pieces||1); }, 0); }
 function qtyInBag(slug){ return getCart().reduce(function(s,i){ return i.id===slug ? s + i.qty : s; }, 0); }
@@ -133,7 +146,11 @@ function setQty(key, qty){
   it.qty = qty;
   saveCart(qty <= 0 ? c.filter(function(i){ return i.key!==key; }) : c);
 }
-function shortOf(i){ var p = getProduct(i.id); return !!(p && (p.hidden || (p.stock !== undefined && i.qty > p.stock))); }
+function shortOf(i){
+  var p = getProduct(i.id);
+  if(!p) return _ready.catalog;                     // gone from the shop entirely
+  return !!(p.hidden || (p.stock !== undefined && i.qty > p.stock));
+}
 
 /* ---------------- words that depend on settings ---------------- */
 function dealLine(){
@@ -202,7 +219,7 @@ function bagLinesHTML(){
   return getCart().map(function(i){
     var p = getProduct(i.id), short = shortOf(i), unit = lineUnit(i);
     var href = p ? p.path : '/shop';
-    var note = p && p.hidden ? 'No longer available — please remove'
+    var note = (!p || p.hidden) && _ready.catalog ? 'No longer available — please remove'
       : (short ? (p.stock > 0 ? 'Only '+p.stock+' left' : 'Sold out — please remove') : (i.size || '55 cm square')+' · '+money(unit));
     return '<div class="bline'+(short?' short':'')+'"><a class="thumb'+(p&&p.image?' photo':'')+'" href="'+href+'" tabindex="-1" aria-hidden="true">'+lineArt(i)+'</a>'
       +'<div><h4><a href="'+href+'">'+esc(p ? p.name : i.name)+'</a></h4><div class="meta">'+esc(note)+'</div>'
@@ -364,7 +381,6 @@ function applySettings(d){
   FUDGIO.sms = !!d.smsVerification;
   if(!FUDGIO.intlEnabled && REGION === 'INTL'){ REGION = 'PK'; }
 }
-var _ready = { catalog: false, settings: false };
 function whenLive(fn){ if(_ready.catalog && _ready.settings) fn(); else onChange(function once(){ if(_ready.catalog && _ready.settings && !once.done){ once.done = true; fn(); } }); }
 
 /* ---- page widgets: every one redraws from state on emit() ---- */

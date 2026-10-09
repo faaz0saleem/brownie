@@ -212,10 +212,25 @@ function db_migrate(PDO $pdo, string $driver = 'sqlite'): void {
       foreach (bandana_catalog() as $b) if (empty($have[$b['slug']])) db_insert_product($pdo, $b);
 
       meta_set($pdo, $driver, 'schema', '2');
+      $level = 2;
+    }
+
+    if ($level < 3) {
+      // Anything from the brownie days — a product the old admin created
+      // under another name, say — has no print colours. Take every one of
+      // them off the shop so no brownie photo can appear again. Rows are
+      // kept (orders hold their own copies); the admin can delete them.
+      $pdo->exec("UPDATE products SET active=0, featured=0 WHERE color IS NULL OR color=''");
+      meta_set($pdo, $driver, 'schema', '3');
     }
 
     db_enforce_sizes($pdo);
-  } catch (Throwable $e) { /* never block a page load on a migration */ }
+  } catch (Throwable $e) {
+    // Never block a page load on a migration, but leave a trace: a shop
+    // stuck on the brownie catalogue is otherwise a mystery. /api/health
+    // reports the schema level reached.
+    error_log('Fudgio migration failed: ' . $e->getMessage());
+  }
 }
 
 /**
@@ -284,7 +299,8 @@ function map_product(array $r): array {
     'sizes'=>jdec($r['sizes']),'allergens'=>jdec($r['allergens']),'details'=>jdec($r['allergens']),
     'containsNuts'=>(bool)$r['contains_nuts'],'stock'=>(int)$r['stock'],'sold'=>(int)$r['sold'],
     'featured'=>(bool)$r['featured'],'active'=>(bool)$r['active'],'sort'=>(int)$r['sort_order'],
-    'color'=>($r['color'] ?? '') ?: '#C3201B','ink'=>($r['ink'] ?? '') ?: '#F3EDE0',
+    // Empty for a product left over from the brownie shop.
+    'color'=>(string)($r['color'] ?? ''),'ink'=>(string)($r['ink'] ?? ''),
     'createdAt'=>(int)$r['created_at'],
   ];
 }
@@ -308,12 +324,14 @@ function map_user(array $r): array {
 }
 
 /* ---------------- products ---------------- */
+// The shop only ever sees bandanas: a row with no print colour is from the
+// brownie days and stays out of the public list even if it is still active.
 function products_all(bool $includeInactive = false): array {
-  $sql = "SELECT * FROM products " . ($includeInactive ? '' : 'WHERE active=1') . " ORDER BY featured DESC, sort_order ASC";
+  $sql = "SELECT * FROM products " . ($includeInactive ? '' : "WHERE active=1 AND color IS NOT NULL AND color<>''") . " ORDER BY featured DESC, sort_order ASC";
   return array_map('map_product', db()->query($sql)->fetchAll());
 }
 function product_get(string $idOrSlug, bool $includeInactive = false): ?array {
-  $st = db()->prepare("SELECT * FROM products WHERE (id=? OR slug=?) " . ($includeInactive ? '' : 'AND active=1') . " LIMIT 1");
+  $st = db()->prepare("SELECT * FROM products WHERE (id=? OR slug=?) " . ($includeInactive ? '' : "AND active=1 AND color IS NOT NULL AND color<>''") . " LIMIT 1");
   $st->execute([$idOrSlug, $idOrSlug]);
   $r = $st->fetch();
   return $r ? map_product($r) : null;
@@ -1165,7 +1183,9 @@ function analytics(): array {
     $per[$k]['units'] += $n; $per[$k]['revenue'] += $pkr($o, $li['lineTotal']);
     $units += $n;
   }
-  $top = array_values($per); usort($top, fn($a,$b)=>$b['units']-$a['units']);
+  // Best sellers are about the range on sale now; brownie lines from old
+  // orders (no print colour) still count in revenue but not in this list.
+  $top = array_values(array_filter($per, fn($x) => !empty($x['color']))); usort($top, fn($a,$b)=>$b['units']-$a['units']);
 
   $days = [];
   for ($i=13;$i>=0;$i--) {

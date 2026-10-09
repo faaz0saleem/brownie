@@ -68,6 +68,8 @@ try {
       $r['orders'] = (int) db()->query("SELECT COUNT(*) c FROM orders")->fetch()['c'];
       $r['products'] = (int) db()->query("SELECT COUNT(*) c FROM products")->fetch()['c'];
       $r['visits'] = (int) db()->query("SELECT COUNT(*) c FROM visits")->fetch()['c'];
+      $r['schema'] = (int) meta_get(db(), 'schema');     // 3 = bandana catalogue in place
+      $r['bandanas'] = (int) db()->query("SELECT COUNT(*) c FROM products WHERE active=1 AND color IS NOT NULL AND color<>''")->fetch()['c'];
     } catch (Throwable $e) { $r['dbError'] = $e->getMessage(); }
     if (db_driver()==='sqlite') {
       $p = $GLOBALS['__fudgio_sqlite'] ?? '';

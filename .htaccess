@@ -38,7 +38,8 @@ ErrorDocument 404 /404.html
   Require all denied
 </FilesMatch>
 RedirectMatch 404 /\.env
-RedirectMatch 404 ^/(src|node_modules|data|\.git|scripts|tests)/
+# public/ is the retired Node app's brownie-era files: never serve them.
+RedirectMatch 404 ^/(src|public|node_modules|data|\.git|scripts|tests)/
 # Block anything trying to reach the SQLite data file directly.
 RedirectMatch 404 \.sqlite$
 

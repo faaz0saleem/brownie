@@ -1,4 +1,4 @@
-/* ===== Brownie Bliss — Admin dashboard ===== */
+/* ===== Fudgio — Admin dashboard ===== */
 :root {
   /* Same four brand colours as the storefront — white, black, orange, pink —
      arranged dark, which suits a dashboard you stare at all day. The status
@@ -159,7 +159,7 @@ select.status-select:focus { outline: none; border-color: var(--brand); }
 .btn-save { background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: var(--white); }
 .btn-danger { background: transparent; color: var(--pink); border: 1px solid var(--pink); }
 .btn-danger:hover { background: var(--pink); color: var(--white); }
-/* The three sizes a brownie is sold in, shown read-only on the stock card. */
+/* Read-only size chips on the stock card. */
 .inv-sizes { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
 .inv-sizes span {
   font-size: .74rem; font-weight: 700; color: var(--dim);

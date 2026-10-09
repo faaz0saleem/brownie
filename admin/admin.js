@@ -293,8 +293,18 @@ function stockChip(stock) {
   return `<span class="stock-chip sc-in">${stock} in stock</span>`;
 }
 async function loadInventory() {
-  const products = await (await api('/products')).json();
+  const all = await (await api('/products')).json();
+  // Rows with no print colour are the old brownies: never on sale again, so
+  // they are kept out of the way here instead of filling the page with photos.
+  const products = all.filter((p) => p.color);
+  const retired = all.filter((p) => !p.color);
   const grid = document.getElementById('invGrid');
+  let note = document.getElementById('invRetired');
+  if (!note) { note = document.createElement('div'); note.id = 'invRetired'; grid.parentNode.insertBefore(note, grid); }
+  note.innerHTML = retired.length
+    ? `<div class="alert-strip" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">${retired.length} old brownie product(s) are hidden from the shop. Past orders keep their own records.
+        <button class="mini danger" onclick="deleteRetired()">Delete them for good</button></div>` : '';
+  window._retired = retired;
   const addBar = document.getElementById('invAddBar');
   if (!addBar) {
     const bar = document.createElement('div'); bar.id = 'invAddBar'; bar.style.marginBottom = '16px';
@@ -332,6 +342,12 @@ async function loadInventory() {
         </div>
       </div>
     </div>`).join('');
+}
+async function deleteRetired() {
+  const list = window._retired || [];
+  if (!list.length || !confirm(`Delete ${list.length} old brownie product(s) permanently?\n\nPast orders are not affected.`)) return;
+  for (const p of list) await api('/products/' + p.id, { method: 'DELETE' });
+  toast('Old products deleted'); loadInventory(); loadDashboard();
 }
 async function saveProduct(id) {
   const price = parseInt(document.getElementById('price-' + id).value, 10) || 0;
