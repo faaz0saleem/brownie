@@ -106,7 +106,8 @@ const VIEW_META = {
   customers: ['Customers', 'Your buyers and their locations'],
   settings: ['Settings', 'Delivery, the deal, payments & more'],
   messages: ['Messages', 'From the contact and bulk-order forms'],
-  subscribers: ['Subscribers', 'People waiting for new colours']
+  subscribers: ['Subscribers', 'People waiting for new colours'],
+  reviews: ['Reviews', 'From verified buyers — approve to publish']
 };
 document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -120,6 +121,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
     if (view === 'settings') loadSettings();
     if (view === 'messages') loadMessages();
     if (view === 'subscribers') loadSubscribers();
+    if (view === 'reviews') loadReviews();
   });
 });
 
@@ -142,6 +144,7 @@ async function loadDashboard() {
     { ico: '👥', label: 'Customers', value: t.customers, foot: 'unique buyers' },
     { ico: '📊', label: 'Avg order value', value: RS(t.avgOrderValue), foot: 'per order, in rupees' },
     { ico: '✉️', label: 'Messages', value: t.unreadMessages || 0, foot: `new · ${t.subscribers || 0} newsletter sign-ups` },
+    { ico: '⭐', label: 'Reviews to approve', value: t.pendingReviews || 0, foot: 'from verified buyers' },
     { ico: '📦', label: 'Out of stock', value: t.outOfStock, foot: `${t.products} colours on sale` }
   ];
   document.getElementById('kpiGrid').innerHTML = kpis.map((k) => `
@@ -580,6 +583,26 @@ async function loadMessages() {
 }
 async function setMsg(id, status) { await api('/messages/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ status }) }); loadMessages(); loadDashboard(); }
 async function delMsg(id) { if (!confirm('Delete this message?')) return; await api('/messages/' + encodeURIComponent(id), { method: 'DELETE' }); loadMessages(); loadDashboard(); }
+
+// ---------- Reviews ----------
+async function loadReviews() {
+  const el = document.getElementById('reviewsBody'); if (!el) return;
+  const list = await (await api('/reviews?all=1')).json();
+  const st = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+  el.innerHTML = list.length ? list.map((r) => `
+    <div class="msg ${r.status === 'pending' ? 'is-new' : ''}">
+      <div class="msg-head"><b style="color:#F5A623;letter-spacing:2px">${st(r.rating)}</b> <b>${esc(r.name)}</b>${r.city ? ' · ' + esc(r.city) : ''}
+        <span class="badge ${r.status === 'approved' ? 'b-delivered' : r.status === 'pending' ? 'b-pending' : 'b-cancelled'}">${esc(r.status)}</span>
+        <span class="muted">${esc(r.slug)} · order ${esc(r.orderId)} · ${fmtDate(r.createdAt)}</span></div>
+      <p style="white-space:pre-wrap;margin:10px 0">${esc(r.body)}</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${r.status !== 'approved' ? `<button class="mini" onclick="setReview('${esc(r.id)}','approved')">✅ Approve</button>` : `<button class="mini" onclick="setReview('${esc(r.id)}','hidden')">🙈 Hide</button>`}
+        <button class="mini danger" onclick="delReview('${esc(r.id)}')">Delete</button>
+      </div>
+    </div>`).join('') : '<div class="empty-state"><div class="em">⭐</div>No reviews yet. Customers can review from their tracking page once an order is Shipped or Delivered.</div>';
+}
+async function setReview(id, status) { await api('/reviews/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ status }) }); toast(status === 'approved' ? 'Review is live ✓' : 'Review hidden'); loadReviews(); loadDashboard(); }
+async function delReview(id) { if (!confirm('Delete this review?')) return; await api('/reviews/' + encodeURIComponent(id), { method: 'DELETE' }); loadReviews(); loadDashboard(); }
 
 // ---------- Subscribers ----------
 async function loadSubscribers() {

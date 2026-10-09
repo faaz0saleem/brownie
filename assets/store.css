@@ -817,3 +817,37 @@ body.lock{overflow:hidden}
 /* rotated art near the edge must never make the page scroll sideways */
 main{overflow-x:clip}
 @media (max-width:640px){ .hero-art .f1{right:3%} }
+
+/* ---------------- trust ---------------- */
+.trust{list-style:none;margin:0;padding:18px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;border-top:1px solid var(--line-d)}
+.trust li{display:flex;gap:12px;align-items:flex-start}
+.trust svg,.secure-note svg{width:26px;height:26px;flex:none;fill:none;stroke:var(--orange);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.trust b{display:block;font-weight:600;font-size:.98rem;line-height:1.25}
+.trust small{color:var(--muted-d);font-size:.86rem}
+.secure-note{display:flex;gap:10px;align-items:center;justify-content:center;font-size:.86rem;color:var(--muted);margin-top:4px}
+.secure-note svg{width:18px;height:18px;stroke:var(--muted)}
+/* ---------------- reviews ---------------- */
+.stars{display:inline-flex;gap:2px;vertical-align:-1px}
+.st{color:rgba(127,127,127,.35);font-size:1rem;line-height:1}
+.st.on{color:#F5A623}
+.st.half{background:linear-gradient(90deg,#F5A623 50%,rgba(127,127,127,.35) 50%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.pd-rating a{color:var(--soft-d);text-decoration:none;font-size:.95rem}
+.pd-rating a:hover{color:var(--on-dark)}
+.rev-sum{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:28px;font-size:1.05rem}
+.rev-sum b{font-size:2.4rem;font-weight:800;letter-spacing:-.03em}
+.rev-sum .st{font-size:1.25rem}
+.rev-sum>span:last-child{color:var(--soft)}
+.reviews{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:20px}
+.review{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.review p{font-size:1.06rem;color:var(--text);line-height:1.5}
+.review footer{font-size:.95rem;color:var(--soft);display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.review .vb{margin-left:auto;font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ok);border:1px solid rgba(31,138,76,.35);padding:3px 8px;border-radius:var(--r-pill)}
+.review small{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+.rv-form{border-top:1px solid var(--line);padding:18px 0;display:flex;flex-direction:column;gap:12px}
+.rv-head{display:flex;align-items:center;gap:12px}
+.rv-head .t{width:52px;display:block}
+.rv-stars{display:flex;gap:4px}
+.rv-stars button{background:none;border:0;font-size:2rem;line-height:1;color:rgba(127,127,127,.3);padding:0 2px;transition:transform .15s,color .15s}
+.rv-stars button:hover{transform:scale(1.12)}
+.rv-stars button.on{color:#F5A623}
+@media (max-width:640px){ .trust{grid-template-columns:1fr} }

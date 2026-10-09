@@ -34,7 +34,45 @@
       +'<div class="srow tot"><span>Total</span><b>'+money(o.total, reg)+'</b></div>'
       +'<p class="pay-note">'+(reg==='PK' ? 'Cash on delivery' : 'Prepaid by payment link')+' · to '+esc(c.city || '')+(c.countryName ? ', '+esc(c.countryName) : '')+'</p>'
       +(o.status==='Awaiting Payment' && FUDGIO.intlPaymentLink ? '<a class="btn btn-primary btn-block" style="margin-top:14px" target="_blank" rel="noopener" href="'+esc(FUDGIO.intlPaymentLink)+'">Pay '+money(o.total, reg)+' now</a><p class="pay-note">Put '+esc(o.id)+' in the payment note.</p>' : '')
-      +'</div></div>';
+      +'</div></div>'
+      +reviewFormHTML(o);
+    bindReviews(o);
+  }
+  /* Once it is on its way, each colour in the order can be reviewed. */
+  function reviewFormHTML(o){
+    if(['Shipped','Out for Delivery','Delivered'].indexOf(o.status) < 0) return '';
+    var seen = {}, items = (o.items||[]).filter(function(li){ var k = li.slug || li.productId; if(!k || seen[k]) return false; seen[k] = 1; return true; });
+    if(!items.length) return '';
+    return '<div class="panel" style="margin-top:24px" id="rvPanel"><h2>How are they?</h2><p style="color:var(--soft);margin-bottom:18px">Tell other people what you think. Reviews show on the shop after a quick check.</p>'
+      + items.map(function(li){
+        var k = li.slug || '';
+        return '<form class="rv-form" data-slug="'+esc(k)+'"><div class="rv-head">'+'<span class="t">'+lineArt({ id: k, name: li.name, color: li.color, ink: li.ink })+'</span><b>'+esc(li.name)+'</b></div>'
+          +'<div class="rv-stars" role="radiogroup" aria-label="Rating for '+esc(li.name)+'">'+[1,2,3,4,5].map(function(n){ return '<button type="button" role="radio" aria-checked="false" data-star="'+n+'" aria-label="'+n+' star'+(n>1?'s':'')+'">★</button>'; }).join('')+'</div>'
+          +'<div class="field"><label>Your review</label><textarea name="body" maxlength="1200" placeholder="How does it look, feel, wash?"></textarea></div>'
+          +'<div class="err" role="alert"></div><button type="submit" class="btn btn-dark btn-sm">Post review</button></form>';
+      }).join('') + '</div>';
+  }
+  function bindReviews(o){
+    Array.prototype.forEach.call(document.querySelectorAll('.rv-form'), function(f){
+      var rating = 0;
+      f.addEventListener('click', function(e){
+        var b = e.target.closest('[data-star]'); if(!b) return;
+        rating = +b.getAttribute('data-star');
+        Array.prototype.forEach.call(f.querySelectorAll('[data-star]'), function(x){ var on = +x.getAttribute('data-star') <= rating; x.classList.toggle('on', on); x.setAttribute('aria-checked', +x.getAttribute('data-star') === rating); });
+      });
+      f.addEventListener('submit', function(e){
+        e.preventDefault();
+        var err = f.querySelector('.err'), body = f.elements.body.value.trim();
+        if(!rating){ err.textContent = 'Tap a star to rate it.'; return; }
+        if(body.length < 3){ err.textContent = 'Please write a few words.'; return; }
+        var btn = f.querySelector('button[type=submit]'); btn.disabled = true;
+        api('POST', '/api/reviews', { orderId: o.id, phone: document.getElementById('tPhone').value.trim(), slug: f.getAttribute('data-slug'), rating: rating, body: body }, function(ok, d){
+          btn.disabled = false;
+          if(!ok){ err.textContent = d.error || 'That did not go through. Please try again.'; return; }
+          f.innerHTML = '<p class="ok-msg">Thank you! Your review will show on the shop shortly.</p>';
+        });
+      });
+    });
   }
   f.addEventListener('submit', function(e){
     e.preventDefault();

@@ -295,6 +295,11 @@ const FAQ = [
 const pages = [];
 const add = (file, m, body, scripts) => pages.push({ file, m, html: page(m, body, scripts) });
 
+// Shown only once there is at least one approved review (store.js loadReviews).
+const reviewsSection = (slug, title = 'What people say') => `<section class="paper rule-top" id="reviews" data-reviews="${slug}" hidden aria-labelledby="revTitle"><div class="wrap sec">
+  <div class="sec-head"><div class="stack"><p class="eyebrow">Reviews</p><h2 class="h2" id="revTitle">${title}</h2></div><p>Every review is from someone who ordered, checked against their order.</p></div>
+  <div class="rev-sum" data-review-sum></div><div class="reviews" data-review-list></div>
+</div></section>`;
 // Home
 const hero = `<section class="dark"><div class="wrap"><div class="hero">
   <div class="hero-copy">
@@ -329,7 +334,7 @@ add('index.html', {
   title: 'Fudgio — Printed Cotton Bandanas in 8 Colours · Shipped Worldwide',
   desc: `Square printed bandanas in eight colours, 100% cotton, 55 cm. Buy any ${D.bundleQty}, save ${D.bundlePct}%. Cash on delivery across Pakistan and shipping worldwide.`,
   ld: [org, { '@type': 'WebSite', '@id': SITE + '/#website', url: SITE, name: BRAND, publisher: { '@id': SITE + '/#store' }, inLanguage: 'en' }],
-}, hero + marquee() + shopSection() + wear() + lookbook() + band());
+}, hero + marquee() + shopSection() + wear() + lookbook() + reviewsSection('', 'Worn and loved.') + band());
 
 // Shop
 add('shop.html', {
@@ -341,7 +346,7 @@ add('shop.html', {
   + `<section class="paper"><div class="wrap sec"><div class="deal-meter" data-deal-meter hidden></div>${grid()}${perks()}</div></section>` + band() + wear());
 
 // Product pages
-const productExtras = (slug) => `<section class="paper" aria-labelledby="moreTitle"><div class="wrap sec">
+const productExtras = (slug) => reviewsSection(slug) + `<section class="paper rule-top" aria-labelledby="moreTitle"><div class="wrap sec">
   <div class="sec-head"><div class="stack"><p class="eyebrow">Make it three</p><h2 class="h2" id="moreTitle">Pick your other two</h2></div>
     <p>Any ${D.bundleQty} colours take <span data-pct>${D.bundlePct}</span>% off, worked out in your bag.</p></div>
   ${grid({ exclude: slug, limit: 4 })}

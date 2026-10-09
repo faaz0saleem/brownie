@@ -148,6 +148,10 @@ function db_init(PDO $pdo, string $driver): void {
   // "Get new colours first" sign-ups, and messages from the contact form.
   $pdo->exec("CREATE TABLE IF NOT EXISTS subscribers (
     email VARCHAR(191) PRIMARY KEY, source VARCHAR(40), created_at BIGINT)");
+  // Reviews, only from real orders, shown once the shop approves them.
+  $pdo->exec("CREATE TABLE IF NOT EXISTS reviews (
+    id VARCHAR(40) PRIMARY KEY, slug VARCHAR(120), order_id VARCHAR(40), name VARCHAR(80), city VARCHAR(80),
+    rating INT, body TEXT, status VARCHAR(20) DEFAULT 'pending', created_at BIGINT)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS messages (
     id VARCHAR(40) PRIMARY KEY, name VARCHAR(120), email VARCHAR(191), phone VARCHAR(40),
     topic VARCHAR(60), body TEXT, status VARCHAR(20) DEFAULT 'new', created_at BIGINT)");
@@ -853,6 +857,61 @@ function orders_csv(): string {
   return $out;
 }
 
+/* ---------------- reviews ----------------
+   Only someone with a real order can review, and only the colours in it:
+   the order number and the phone it was placed with prove it, the same pair
+   the tracking page uses. Every review waits for the shop to approve it, and
+   nothing is ever shown that a customer did not write. */
+function review_statuses_open(): array { return ['Shipped', 'Out for Delivery', 'Delivered']; }
+function review_create(array $b): array {
+  $o = order_get(trim((string)($b['orderId'] ?? '')));
+  if (!$o || preg_replace('/\D/', '', $o['customer']['phone'] ?? '') !== preg_replace('/\D/', '', (string)($b['phone'] ?? '')))
+    return ['error' => 'We could not find that order with that phone number.'];
+  if (!in_array($o['status'], review_statuses_open(), true))
+    return ['error' => 'You can review your bandanas once your order is on its way.'];
+  $slug = clean_text($b['slug'] ?? '', 120);
+  $inOrder = false; $name = '';
+  foreach ($o['items'] as $li) {
+    $s = $li['slug'] ?? '';
+    if ($s === '' && !empty($li['productId'])) { $p = product_get($li['productId'], true); $s = $p['slug'] ?? ''; }
+    if ($s === $slug) { $inOrder = true; $name = $li['name']; }
+  }
+  if (!$inOrder) return ['error' => 'That colour is not in this order.'];
+  $rating = (int)($b['rating'] ?? 0);
+  if ($rating < 1 || $rating > 5) return ['error' => 'Please choose a star rating.'];
+  $body = clean_text($b['body'] ?? '', 1200);
+  if (mb_strlen($body) < 3) return ['error' => 'Please write a few words about it.'];
+  $st = db()->prepare("SELECT COUNT(*) c FROM reviews WHERE order_id=? AND slug=?"); $st->execute([$o['id'], $slug]);
+  if ((int)$st->fetch()['c'] > 0) return ['error' => 'You have already reviewed this colour from this order. Thank you!'];
+  // First name and initial, never the full name or contact details.
+  $full = preg_split('/\s+/', trim((string)($o['customer']['name'] ?? ''))) ?: [''];
+  $shown = clean_text($full[0], 40) . (isset($full[1]) && $full[1] !== '' ? ' ' . mb_strtoupper(mb_substr($full[1], 0, 1)) . '.' : '');
+  $r = ['id' => gen_id(), 'slug' => $slug, 'orderId' => $o['id'], 'name' => $shown ?: 'A customer',
+        'city' => clean_text($o['customer']['city'] ?? '', 80), 'rating' => $rating, 'body' => $body, 'status' => 'pending', 'createdAt' => now_ms(), 'colour' => $name];
+  db()->prepare("INSERT INTO reviews (id,slug,order_id,name,city,rating,body,status,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+     ->execute([$r['id'], $r['slug'], $r['orderId'], $r['name'], $r['city'], $r['rating'], $r['body'], 'pending', $r['createdAt']]);
+  return ['review' => $r];
+}
+function map_review(array $r, bool $admin = false): array {
+  $out = ['id'=>$r['id'],'slug'=>$r['slug'],'name'=>$r['name'],'city'=>$r['city'],'rating'=>(int)$r['rating'],'body'=>$r['body'],'createdAt'=>(int)$r['created_at']];
+  if ($admin) { $out['status'] = $r['status']; $out['orderId'] = $r['order_id']; }
+  return $out;
+}
+/** Approved reviews (for one colour, or all), newest first, with a summary. */
+function reviews_public(string $slug = '', int $limit = 30): array {
+  $sql = "SELECT * FROM reviews WHERE status='approved'" . ($slug !== '' ? " AND slug=?" : '') . " ORDER BY created_at DESC";
+  $st = db()->prepare($sql); $st->execute($slug !== '' ? [$slug] : []);
+  $rows = $st->fetchAll();
+  $n = count($rows); $avg = $n ? round(array_sum(array_map(fn($r) => (int)$r['rating'], $rows)) / $n, 1) : 0;
+  return ['count' => $n, 'average' => $avg, 'reviews' => array_map('map_review', array_slice($rows, 0, $limit))];
+}
+function reviews_all(): array { return array_map(fn($r) => map_review($r, true), db()->query("SELECT * FROM reviews ORDER BY created_at DESC")->fetchAll()); }
+function review_set_status(string $id, string $status): bool {
+  if (!in_array($status, ['pending', 'approved', 'hidden'], true)) return false;
+  $st = db()->prepare("UPDATE reviews SET status=? WHERE id=?"); $st->execute([$status, $id]); return $st->rowCount() > 0;
+}
+function review_delete(string $id): bool { $st = db()->prepare("DELETE FROM reviews WHERE id=?"); $st->execute([$id]); return $st->rowCount() > 0; }
+
 /* ---------------- banner photo ----------------
    One photo for the top of the home page — someone wearing a Fudgio bandana.
    Kept as its own settings row so the store settings stay small; served as
@@ -1319,6 +1378,8 @@ function analytics(): array {
   $subs = 0; $unread = 0;
   try { $subs = (int) db()->query("SELECT COUNT(*) c FROM subscribers")->fetch()['c']; } catch (Throwable $e) {}
   try { $unread = (int) db()->query("SELECT COUNT(*) c FROM messages WHERE status='new'")->fetch()['c']; } catch (Throwable $e) {}
+  $pendingReviews = 0;
+  try { $pendingReviews = (int) db()->query("SELECT COUNT(*) c FROM reviews WHERE status='pending'")->fetch()['c']; } catch (Throwable $e) {}
   $vs = visit_stats();
 
   return [
@@ -1326,7 +1387,7 @@ function analytics(): array {
     'totals'=>[
       'revenue'=>$revenue,'revenuePkr'=>$revenuePkr,'revenueUsd'=>$revenueUsd,'usdRate'=>$rate,
       'orders'=>count($orders),'activeOrders'=>count($active),'intlOrders'=>$intlOrders,
-      'bundleOrders'=>$bundleOrders,'subscribers'=>$subs,'unreadMessages'=>$unread,
+      'bundleOrders'=>$bundleOrders,'subscribers'=>$subs,'unreadMessages'=>$unread,'pendingReviews'=>$pendingReviews,
       'awaitingPayment'=>count($awaiting),'awaitingPaymentUsd'=>$awaitingUsd,
       'cancelledOrders'=>count(array_filter($orders, fn($o)=>$o['status']==='Cancelled')),
       'deliveredOrders'=>count($delivered),

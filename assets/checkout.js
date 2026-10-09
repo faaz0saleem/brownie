@@ -105,6 +105,7 @@ function detailsHTML(){
     + captchaHTML()
     +'<div class="err" id="err" role="alert"></div>'
     +'<button type="button" class="btn btn-primary btn-block" id="place" onclick="primaryAction()"></button>'
+    +'<p class="secure-note">'+ICONS.lock+'Your details are only used to deliver this order. No account, no spam.</p>'
     +'</div></div>';
 }
 /** Re-labels everything that depends on the destination, without wiping what was typed. */

@@ -115,6 +115,27 @@ try {
     ]);
   }
 
+  // ---- reviews ----
+  // GET /api/reviews[?slug=] is public (approved only). POST needs the order
+  // number and phone. The admin lists, approves, hides and deletes.
+  if ($seg[0]==='reviews') {
+    if (count($seg)===1 && $method==='GET') {
+      if (isset($_GET['all'])) { require_admin(); out(reviews_all()); }
+      out(reviews_public(clean_text($_GET['slug'] ?? '', 120)));
+    }
+    if (count($seg)===1 && $method==='POST') {
+      throttle('review', 12, 3600000);
+      $r = review_create(body(8192));
+      isset($r['error']) ? err($r['error']) : out(['ok'=>true], 201);
+    }
+    if (count($seg)===2) {
+      require_admin();
+      if ($method==='PATCH') out(['ok'=>review_set_status($seg[1], (string)(body()['status'] ?? ''))]);
+      if ($method==='DELETE') out(['ok'=>review_delete($seg[1])]);
+    }
+    err('Not found', 404);
+  }
+
   // Public: "get new colours first".
   if ($path==='subscribe' && $method==='POST') {
     throttle('subscribe', 20, 3600000);

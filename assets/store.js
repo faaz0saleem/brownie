@@ -242,6 +242,46 @@ function viewThumb(p, v){
   if(r) return '<span class="vt is-render">'+imgTag(r[(v.key === 'zoom' ? 'detail' : v.key) + 'Sm'], '', false)+'</span>';
   return '<span class="vt v-'+v.key+'"><span class="bn">'+bandanaSVG(p.color, p.ink)+'</span></span>';
 }
+/* What a customer can count on, said plainly under the buy button. */
+var ICONS = {
+  truck: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></svg>',
+  cash: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v5M17.5 9.5v5"/></svg>',
+  swap: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h13l-3-3M20 15H7l3 3"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8M8 13h5"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>'
+};
+function trustHTML(){
+  return '<ul class="trust" id="pdTrust">'
+    +'<li>'+ICONS.truck+'<span><b data-t="ship">'+(isPK() ? 'Delivered in '+FUDGIO.daysPk+' days' : 'Ships worldwide, tracked')+'</b><small data-t="ship2">'+(isPK() ? 'Anywhere in Pakistan' : FUDGIO.daysIntl+' working days')+'</small></span></li>'
+    +'<li>'+ICONS.cash+'<span><b data-t="pay">'+(isPK() ? 'Cash on delivery' : 'Secure payment link')+'</b><small data-t="pay2">'+(isPK() ? 'Pay when it arrives' : 'Pay before it ships')+'</small></span></li>'
+    +'<li>'+ICONS.swap+'<span><b>7-day exchanges</b><small>Unworn, unwashed</small></span></li>'
+    +'<li>'+ICONS.chat+'<span><b>Real people</b><small>We reply within a day</small></span></li>'
+    +'</ul>';
+}
+function stars(n){ var h = ''; for(var i=1;i<=5;i++) h += '<span class="st'+(n >= i - .25 ? ' on' : (n >= i - .75 ? ' half' : ''))+'" aria-hidden="true">★</span>'; return '<span class="stars" role="img" aria-label="'+n+' out of 5 stars">'+h+'</span>'; }
+function reviewCardHTML(r){
+  var d = ''; try{ d = new Date(r.createdAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }); }catch(e){}
+  var p = getProduct(r.slug);
+  return '<article class="review reveal-me">'+stars(r.rating)+'<p>“'+esc(r.body)+'”</p>'
+    +'<footer><b>'+esc(r.name)+'</b>'+(r.city ? ' · '+esc(r.city) : '')+'<span class="vb">Verified buyer</span></footer>'
+    +'<small>'+(p ? esc(p.name)+' · ' : '')+esc(d)+'</small></article>';
+}
+/* Approved reviews into any [data-reviews] section; it stays hidden until there is one. */
+function loadReviews(){
+  if(!HAS_DOM) return;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-reviews]'), function(sec){
+    var slug = sec.getAttribute('data-reviews') || (PD && PD.slug) || '';
+    api('GET', '/api/reviews' + (slug ? '?slug=' + encodeURIComponent(slug) : ''), null, function(ok, d){
+      if(!ok || !d || !d.count) return;
+      var list = sec.querySelector('[data-review-list]'), sum = sec.querySelector('[data-review-sum]');
+      if(list) list.innerHTML = d.reviews.slice(0, slug ? 12 : 3).map(reviewCardHTML).join('');
+      if(sum) sum.innerHTML = '<b>'+d.average.toFixed(1)+'</b> '+stars(d.average)+' <span>'+d.count+' review'+(d.count===1?'':'s')+' from verified buyers</span>';
+      sec.hidden = false; revealIn(sec);
+      var pr = document.getElementById('pdRating');
+      if(pr && slug){ pr.hidden = false; pr.innerHTML = '<a href="#reviews">'+stars(d.average)+' '+d.average.toFixed(1)+' · '+d.count+' review'+(d.count===1?'':'s')+'</a>'; }
+    });
+  });
+}
 function productPageHTML(p){
   var details = (p.details && p.details.length ? p.details : ['100% cotton','55 × 55 cm (22")','Hemmed edges','Colourfast print','Machine washable']);
   return '<div class="pd" data-pd="'+esc(p.slug)+'">'
@@ -261,6 +301,8 @@ function productPageHTML(p){
       +'<div class="buy"><div class="stepper" role="group" aria-label="Quantity"><button type="button" id="pdMinus" aria-label="One fewer">−</button><span id="pdQty">1</span><button type="button" id="pdPlus" aria-label="One more">+</button></div>'
         +'<button type="button" class="btn btn-primary" id="pdAdd">Add to bag</button></div>'
       +'<button type="button" class="btn btn-outline btn-block" id="pdBuy">Buy it now</button>'
+      +'<div class="pd-rating" id="pdRating" hidden></div>'
+      +trustHTML()
       +'<div class="deal-note" id="pdDeal"><span class="pct" data-pct-badge>'+(FUDGIO.bundlePct|0)+'%</span><div><b data-deal-line>Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%.</b> Mix any colours — the discount is applied automatically in your bag.</div></div>'
       +'<div class="acc">'
         +'<details open><summary>Details</summary><div class="a"><ul>'+details.map(function(d){ return '<li>'+esc(d)+'</li>'; }).join('')+'</ul></div></details>'
@@ -642,6 +684,7 @@ function paintProduct(){
     dl.textContent = !cartUnits() ? 'Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%.' : (left ? 'Add '+left+' more to save '+FUDGIO.bundlePct+'%.' : FUDGIO.bundlePct+'% off is unlocked.');
     root.querySelector('[data-pct-badge]').textContent = FUDGIO.bundlePct+'%';
   }
+  var tr = $('pdTrust'); if(tr){ var t = document.createElement('div'); t.innerHTML = trustHTML(); tr.innerHTML = t.firstChild.innerHTML; }
   var sp = root.querySelector('[data-ship-pk]'), si = root.querySelector('[data-ship-intl]');
   if(sp) sp.textContent = 'Pakistan: cash on delivery, '+(FUDGIO.deliveryFee ? money(FUDGIO.deliveryFee,'PK')+(FUDGIO.freeOver ? ' (free over '+money(FUDGIO.freeOver,'PK')+')' : '') : 'free')+', '+FUDGIO.daysPk+' working days.';
   if(si) si.textContent = 'Worldwide: '+(FUDGIO.intlShipping ? money(FUDGIO.intlShipping,'INTL')+' flat' : 'free shipping')+', paid before it ships, '+FUDGIO.daysIntl+' working days.';
@@ -839,6 +882,7 @@ if(HAS_DOM) (function(){
     }
     emit();
     revealIn(document);
+    loadReviews();
 
     // live data
     api('GET', '/api/products', null, function(ok, rows){ if(ok) mergeLive(rows); _ready.catalog = true; emit(); });
