@@ -255,7 +255,7 @@ function orderDone(o, d){
   }
   var h = document.querySelector('.sec-head h1'); if(h) h.textContent = intl ? 'Reserved for you.' : 'It’s on its way.';
   var sl = document.querySelector('.sec-head [data-ship]'); if(sl) sl.hidden = true;
-  var art = (o.items||[]).slice(0,3).map(function(li){ return '<div class="bn" style="width:72px">'+bandanaSVG(li.color, li.ink)+'</div>'; }).join('');
+  var art = (o.items||[]).slice(0,3).map(function(li){ return '<div style="width:84px">'+lineArt({ id: li.slug || li.productId, name: li.name, color: li.color, ink: li.ink })+'</div>'; }).join('');
   document.getElementById('root').innerHTML = '<div class="done"><div class="trio" style="display:flex;margin-bottom:8px">'+art+'</div>'
     +'<p class="eyebrow">'+(intl ? 'Order received' : 'Order placed')+'</p><h2 class="h2">Thank you, '+esc(d.name.split(' ')[0])+'.</h2>'
     +'<p style="color:var(--soft)">Your order number is</p><div class="oid">'+esc(o.id||'')+'</div>'
@@ -271,7 +271,7 @@ function render(){
   var root=document.getElementById('root');
   if(!getCart().length){
     document.getElementById('stepsBar').innerHTML='';
-    root.innerHTML='<div class="empty"><div class="bn">'+bandanaSVG('#FF6A13','#FFFFFF')+'</div><h2>Your bag is empty.</h2><a href="/shop" class="btn btn-primary">Shop all colours</a></div>';
+    root.innerHTML='<div class="empty">'+cutHTML(visibleProducts()[0] || {})+'<h2>Your bag is empty.</h2><a href="/shop" class="btn btn-primary">Shop all colours</a></div>';
     return;
   }
   root.innerHTML='<div class="split"><div id="stepPanel"></div><div id="sumWrap">'+summaryHtml()+'</div></div>';

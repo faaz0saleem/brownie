@@ -27,7 +27,8 @@ if (typeof FUDGIO_DEFAULTS !== 'undefined') for (var _k in FUDGIO_DEFAULTS) FUDG
 function makeProduct(c, isStatic){
   return { id: c.slug, slug: c.slug, name: c.name, color: c.color, ink: c.ink,
     tagline: c.tagline || '', desc: c.description || c.desc || '',
-    image: c.imageUrl || '', sort: c.sort || 0, hidden: false, isStatic: !!isStatic,
+    image: c.imageUrl || '', photos: (c.photos || []).slice(), renders: c.renders || null,
+    sort: c.sort || 0, hidden: false, isStatic: !!isStatic,
     path: isStatic ? '/bandanas/' + c.slug : '/bandana?c=' + encodeURIComponent(c.slug),
     sizes: (c.sizes || []).map(function(s){ return { label: s.label, pieces: s.pieces || 1, price: +s.price, usd: +s.usd || 0 }; }),
     details: (c.details || []).slice() };
@@ -79,15 +80,35 @@ var _subs = [];
 function onChange(fn){ _subs.push(fn); }
 function emit(){ _subs.slice().forEach(function(fn){ try{ fn(); }catch(e){ if(typeof console!=='undefined') console.error(e); } }); }
 
-/* ---------------- art ---------------- */
+/* ---------------- pictures ----------------
+   Best first: the shop's own photos (uploaded in the admin), then the studio
+   renders made by scripts/photos.mjs for each catalogue colour, then the
+   drawing. A render is only used while the colour still matches the one it
+   was made in — if the admin recolours a bandana, the drawing follows the
+   new colour and the stale render steps aside. */
+function renders(p){ return p && p.renders && String(p.renders.color).toUpperCase() === String(p.color).toUpperCase() ? p.renders : null; }
+function imgTag(src, alt, eager, cls, srcset, sizes){
+  return '<img'+(cls?' class="'+cls+'"':'')+' src="'+esc(src)+'"'+(srcset?' srcset="'+esc(srcset)+'" sizes="'+(sizes||'50vw')+'"':'')
+    +' alt="'+esc(alt||'')+'" loading="'+(eager?'eager':'lazy')+'" decoding="async"/>';
+}
+/** A render of one view ('flat' | 'fold' | 'detail') at 'sm' or full size, or ''. */
+function renderSrc(p, view, sm){ var r = renders(p); return r ? r[view + (sm ? 'Sm' : '')] : ''; }
+/** The cut-out bandana used anywhere it floats (hero, slots, bag, cards). */
+function cutHTML(p, opts){
+  opts = opts || {};
+  var view = opts.view || 'flat', r = renders(p);
+  if(r) return '<div class="rd">'+imgTag(opts.big ? r[view] : r[view + 'Sm'], opts.alt ? p.name + ' bandana' : '', opts.eager, '',
+    opts.big ? r[view + 'Sm'] + ' 480w, ' + r[view] + ' 1000w' : '', opts.sizes)+'</div>';
+  return '<div class="bn">'+bandanaSVG(p ? p.color : '', p ? p.ink : '', opts.alt && p ? { title: p.name + ' bandana' } : null)+'</div>';
+}
 function artHTML(p, opts){
   opts = opts || {};
-  if(p && p.image) return '<img src="'+esc(p.image)+'" alt="'+(opts.alt ? esc(p.name+' bandana') : '')+'" loading="'+(opts.eager?'eager':'lazy')+'" decoding="async"/>';
-  return '<div class="bn">'+bandanaSVG(p ? p.color : '', p ? p.ink : '', opts.alt && p ? { title: p.name + ' bandana' } : null)+'</div>';
+  if(p && p.image) return imgTag(p.image, opts.alt ? p.name + ' bandana' : '', opts.eager);
+  return cutHTML(p, opts);
 }
 function lineArt(i){
   var p = getProduct(i.id) || { name: i.name, color: i.color, ink: i.ink, image: i.image };
-  return p.image ? '<img src="'+esc(p.image)+'" alt="" loading="lazy"/>' : '<div class="bn">'+bandanaSVG(p.color, p.ink)+'</div>';
+  return p.image ? imgTag(p.image, '', false) : cutHTML(p);
 }
 
 /* ---------------- bag ---------------- */
@@ -178,7 +199,11 @@ function productCardHTML(p){
     : '<button type="button" class="add-btn'+(n?' in':'')+'" data-add="'+esc(p.slug)+'" aria-label="Add '+esc(p.name)+' to bag">'
       + (n ? 'In bag ('+n+')<span class="more"> · Add another</span><span class="plus" aria-hidden="true"> +</span>' : 'Add to bag') + '</button>';
   return '<article class="card'+(out?' is-sold-out':'')+'" data-slug="'+esc(p.slug)+'">'
-    +'<div class="tile'+(p.image?' photo':'')+'">'+artHTML(p)+flag+'</div>'
+    +'<div class="tile'+(p.image ? ' photo' : (renders(p) ? ' render' : ''))+'">'
+      +(p.image ? imgTag(p.image, '', false) + (p.photos && p.photos[1] ? imgTag(p.photos[1], '', false, 'alt-img') : '')
+        : renders(p) ? cutHTML(p, { big: true, sizes: '(max-width:640px) 45vw, 300px' }) + '<div class="rd alt-img">'+imgTag(renderSrc(p, 'fold'), '', false, '', renderSrc(p, 'fold', true) + ' 480w, ' + renderSrc(p, 'fold') + ' 1000w', '(max-width:640px) 45vw, 300px')+'</div>'
+        : artHTML(p))
+      +flag+'</div>'
     +'<div class="card-meta"><h3 class="card-name"><a href="'+p.path+'">'+esc(p.name)+'</a></h3>'
     +'<span class="card-price">'+money(unitPrice(p))+'</span></div>'
     +btn+'</article>';
@@ -193,21 +218,36 @@ function swatchesHTML(cur){
 
 /* The big picture on a product page: the photo if there is one, otherwise
    the drawing three ways — flat, folded into a triangle, and close up. */
+function stageViews(p){
+  if(p.photos && p.photos.length) return p.photos.map(function(u, i){ return { key: 'p' + i, label: 'Photo ' + (i + 1), photo: u }; });
+  return [{ key: 'flat', label: 'Flat' }, { key: 'fold', label: 'Folded' }, { key: 'zoom', label: 'Close-up' }];
+}
 function stageHTML(p){
-  if(p.image) return artHTML(p, { alt: true, eager: true });
-  var svg = bandanaSVG(p.color, p.ink, { title: p.name + ' bandana' });
-  return '<div class="v v-flat"><div class="bn">'+svg+'</div></div>'
-    +'<div class="v v-fold" aria-hidden="true"><div class="bn">'+bandanaSVG(p.color, p.ink)+'</div></div>'
-    +'<div class="v v-zoom" aria-hidden="true"><div class="bn">'+bandanaSVG(p.color, p.ink)+'</div></div>';
+  var views = stageViews(p), r = renders(p);
+  return views.map(function(v, i){
+    var hide = i ? ' aria-hidden="true"' : '', alt = i ? '' : p.name + ' bandana', on = i ? '' : ' on';
+    if(v.photo) return '<div class="v v-photo'+on+'" data-v="'+v.key+'"'+hide+'>'+imgTag(v.photo, alt, !i)+'</div>';
+    if(r){
+      var view = v.key === 'zoom' ? 'detail' : v.key;
+      return '<div class="v v-'+v.key+' is-render'+on+'" data-v="'+v.key+'"'+hide+'><div class="rd">'+imgTag(r[view], alt, !i, '', r[view + 'Sm'] + ' 480w, ' + r[view] + ' 1000w', '(max-width:1024px) 92vw, 620px')+'</div></div>';
+    }
+    return '<div class="v v-'+v.key+on+'" data-v="'+v.key+'"'+hide+'><div class="bn">'+bandanaSVG(p.color, p.ink, i ? null : { title: alt })+'</div></div>';
+  }).join('');
+}
+function viewThumb(p, v){
+  var r = renders(p);
+  if(v.photo) return '<span class="vt v-photo">'+imgTag(v.photo, '', false)+'</span>';
+  if(r) return '<span class="vt is-render">'+imgTag(r[(v.key === 'zoom' ? 'detail' : v.key) + 'Sm'], '', false)+'</span>';
+  return '<span class="vt v-'+v.key+'"><span class="bn">'+bandanaSVG(p.color, p.ink)+'</span></span>';
 }
 function productPageHTML(p){
   var details = (p.details && p.details.length ? p.details : ['100% cotton','55 × 55 cm (22")','Hemmed edges','Colourfast print','Machine washable']);
   return '<div class="pd" data-pd="'+esc(p.slug)+'">'
-    +'<div class="pd-gallery"><div class="pd-stage'+(p.image?' photo':'')+'" id="pdStage" data-view="flat">'+stageHTML(p)+'</div>'
-    +(p.image ? '' : '<div class="pd-views" role="tablist" aria-label="Views">'
-      +[['flat','Flat'],['fold','Folded'],['zoom','Close-up']].map(function(v, i){
-        return '<button type="button" role="tab" class="view-btn'+(i?'':' on')+'" data-view="'+v[0]+'" aria-selected="'+(i?'false':'true')+'"><span class="vt v-'+v[0]+'"><span class="bn">'+bandanaSVG(p.color, p.ink)+'</span></span>'+v[1]+'</button>';
-      }).join('')+'</div>')
+    +'<div class="pd-gallery"><div class="pd-stage'+(p.photos && p.photos.length ? ' photo' : (renders(p) ? ' render' : ''))+'" id="pdStage" data-view="'+stageViews(p)[0].key+'">'+stageHTML(p)+'</div>'
+    +(stageViews(p).length > 1 ? '<div class="pd-views" role="tablist" aria-label="Views">'
+      +stageViews(p).map(function(v, i){
+        return '<button type="button" role="tab" class="view-btn'+(i?'':' on')+'" data-view="'+v.key+'" aria-selected="'+(i?'false':'true')+'">'+viewThumb(p, v)+(v.photo ? '' : v.label)+'</button>';
+      }).join('')+'</div>' : '')
     +'</div>'
     +'<div class="pd-info">'
       +'<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/shop">Shop</a><span class="sep">/</span><span>'+esc(p.name)+'</span></nav>'
@@ -335,7 +375,7 @@ function renderDrawer(){
     deal.innerHTML = '<b>'+esc(dealLine())+'</b><div class="bar"><i style="width:'+Math.min(100, n/q*100)+'%"></i></div>';
   }
   if(!cart.length){
-    document.getElementById('dwBody').innerHTML = '<div class="drawer-empty"><div class="bn">'+bandanaSVG('#FF6A13','#FFFFFF')+'</div><p>Your bag is empty.</p><a class="btn btn-dark btn-sm" href="/shop">Shop all colours</a></div>';
+    document.getElementById('dwBody').innerHTML = '<div class="drawer-empty">'+cutHTML(visibleProducts()[0] || {})+'<p>Your bag is empty.</p><a class="btn btn-dark btn-sm" href="/shop">Shop all colours</a></div>';
     document.getElementById('dwFoot').innerHTML = '';
     return;
   }
@@ -344,7 +384,7 @@ function renderDrawer(){
     var inBag = {}; cart.forEach(function(i){ inBag[i.id] = 1; });
     var ideas = visibleProducts().filter(function(p){ return !inBag[p.slug] && inStock(p); }).slice(0, 4);
     if(ideas.length) upsell = '<div class="upsell"><p class="lbl">Add '+left+' more to save '+FUDGIO.bundlePct+'%</p><div class="ideas">'
-      + ideas.map(function(p){ return '<button type="button" class="idea" data-add="'+esc(p.slug)+'" aria-label="Add '+esc(p.name)+'"><span class="bn">'+bandanaSVG(p.color, p.ink)+'</span><span>'+esc(p.name)+'</span><b aria-hidden="true">+</b></button>'; }).join('')
+      + ideas.map(function(p){ return '<button type="button" class="idea" data-add="'+esc(p.slug)+'" aria-label="Add '+esc(p.name)+'">'+cutHTML(p)+'<span>'+esc(p.name)+'</span><b aria-hidden="true">+</b></button>'; }).join('')
       + '</div></div>';
   }
   document.getElementById('dwBody').innerHTML = bagLinesHTML() + upsell;
@@ -383,7 +423,8 @@ function mergeLive(rows){
     if(r.sizes && r.sizes.length) p.sizes = r.sizes;
     if(r.details && r.details.length) p.details = r.details;
     if(typeof r.sort === 'number') p.sort = r.sort;
-    p.image = r.imageUrl || '';
+    p.photos = (r.photos && r.photos.length) ? r.photos.slice() : (r.imageUrl ? [r.imageUrl] : []);
+    p.image = p.photos[0] || '';
     if(r.stock !== undefined && r.stock !== null && !isNaN(+r.stock)) p.stock = +r.stock;
   });
   // A colour the shop no longer lists is hidden from the grid.
@@ -437,7 +478,7 @@ function builderHTML(){
   var q = Math.max(2, FUDGIO.bundleQty|0), n = PICKS.length, slots = '';
   for(var i=0;i<q;i++){
     var p = PICKS[i] && getProduct(PICKS[i]);
-    slots += p ? '<button type="button" class="slot on'+(i===_pickNew?' pop':'')+'" data-unpick="'+i+'" aria-label="Remove '+esc(p.name)+'"><div class="bn">'+bandanaSVG(p.color, p.ink)+'</div><span class="x" aria-hidden="true">×</span></button>'
+    slots += p ? '<button type="button" class="slot on'+(i===_pickNew?' pop':'')+'" data-unpick="'+i+'" aria-label="Remove '+esc(p.name)+'">'+cutHTML(p)+'<span class="x" aria-hidden="true">×</span></button>'
                : '<span class="slot" aria-hidden="true"><b>'+(i+1)+'</b></span>';
   }
   var sws = visibleProducts().filter(function(p){ return inStock(p, PICKS.filter(function(x){ return x===p.slug; }).length + 1); }).map(function(p){
@@ -500,7 +541,7 @@ function paintBits(){
   });
   set('[data-trio]', function(el){
     var v = visibleProducts(), pick = [v[0], v[2], v[4]].filter(Boolean);
-    el.innerHTML = pick.map(function(p){ return '<div class="bn">'+bandanaSVG(p.color, p.ink)+'</div>'; }).join('');
+    el.innerHTML = pick.map(function(p){ return cutHTML(p); }).join('');
   });
   set('[data-builder]', function(el){ el.innerHTML = builderHTML(); _pickNew = -1; });
   set('[data-sticker]', function(el){ var t = 'Buy any '+FUDGIO.bundleQty+' · save '+FUDGIO.bundlePct+'% · '; el.textContent = t+t; });
@@ -531,7 +572,9 @@ function initProduct(slug){
     var p = getProduct(PD.slug); if(!p) return;
     if(t.classList.contains('view-btn')){
       var v = t.getAttribute('data-view');
-      document.getElementById('pdStage').setAttribute('data-view', v);
+      var st = document.getElementById('pdStage');
+      st.setAttribute('data-view', v);
+      Array.prototype.forEach.call(st.querySelectorAll('.v'), function(el){ var on = el.getAttribute('data-v') === v; el.classList.toggle('on', on); if(on) el.removeAttribute('aria-hidden'); else el.setAttribute('aria-hidden','true'); });
       Array.prototype.forEach.call(root.querySelectorAll('.view-btn'), function(b){ var on = b === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
       return;
     }
@@ -561,11 +604,15 @@ function paintProduct(){
   if(!root.querySelector('.pd')) root.innerHTML = productPageHTML(p);
   if(!p.isStatic) document.title = p.name + ' Bandana — 100% Cotton, 55 cm | Fudgio';
   var $ = function(id){ return document.getElementById(id); };
-  var stage = $('pdStage');
-  var hasPhoto = !!p.image, showsPhoto = !!stage.querySelector('img');
-  if(hasPhoto !== showsPhoto || (hasPhoto && stage.querySelector('img').getAttribute('src') !== p.image)){
-    stage.className = 'pd-stage'+(hasPhoto?' photo':''); stage.innerHTML = stageHTML(p);
-    var vw = root.querySelector('.pd-views'); if(vw) vw.hidden = hasPhoto;
+  // The gallery is rebuilt only when the pictures themselves change (an
+  // admin photo arrived, or the colour was edited), not on every repaint.
+  var galKey = (p.photos || []).join('|') + '#' + p.color + p.ink;
+  if(PD.gal === undefined) PD.gal = galKey;
+  if(PD.gal !== galKey){
+    PD.gal = galKey;
+    var gal = root.querySelector('.pd-gallery'), tmp = document.createElement('div');
+    tmp.innerHTML = productPageHTML(p);
+    gal.innerHTML = tmp.querySelector('.pd-gallery').innerHTML;
   }
   var unit = unitPrice(p), out = !inStock(p);
   $('pdPrice').innerHTML = money(unit)+' <small>'+(isPK() ? 'Cash on delivery' : 'Paid before it ships · USD')+'</small>';
@@ -709,9 +756,9 @@ if(HAS_DOM) (function(){
     if(art && !reduce && matchMedia('(hover:hover)').matches){
       art.addEventListener('pointermove', function(e){
         var r = art.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
-        Array.prototype.forEach.call(art.querySelectorAll('.float .bn'), function(b, i){ var k = (i + 1) * 9; b.style.setProperty('--px', (x * k)+'px'); b.style.setProperty('--py', (y * k)+'px'); });
+        Array.prototype.forEach.call(art.querySelectorAll('.float .hero-bn'), function(b, i){ var k = (i + 1) * 9; b.style.setProperty('--px', (x * k)+'px'); b.style.setProperty('--py', (y * k)+'px'); });
       });
-      art.addEventListener('pointerleave', function(){ Array.prototype.forEach.call(art.querySelectorAll('.float .bn'), function(b){ b.style.setProperty('--px','0px'); b.style.setProperty('--py','0px'); }); });
+      art.addEventListener('pointerleave', function(){ Array.prototype.forEach.call(art.querySelectorAll('.float .hero-bn'), function(b){ b.style.setProperty('--px','0px'); b.style.setProperty('--py','0px'); }); });
     }
 
     // newsletter
@@ -735,13 +782,13 @@ if(HAS_DOM) (function(){
     if(annEl && !REDUCE) setInterval(function(){ if(document.hidden || ANN.length < 2) return; _annI++; showAnnouncement(annEl, true); }, 4200);
 
     // the hero's front bandana tries on every colour, until you pick one
-    var front = document.querySelector('.f3 .bn'), heroSw = document.querySelector('[data-hero-sw]');
+    var front = document.querySelector('.f3 .hero-bn'), heroSw = document.querySelector('[data-hero-sw]');
     if(front && heroSw){
       var cycle = null, ci = 0;
       var wear = function(p){
         if(!p) return;
         front.classList.remove('swap'); void front.offsetWidth;
-        front.innerHTML = bandanaSVG(p.color, p.ink); front.classList.add('swap');
+        front.innerHTML = cutHTML(p, { big: true, eager: true, sizes: '(max-width:640px) 66vw, 370px' }); front.classList.add('swap');
         Array.prototype.forEach.call(heroSw.querySelectorAll('button'), function(b){ b.classList.toggle('on', b.getAttribute('data-c') === p.slug); });
         var nm = document.querySelector('[data-hero-name]'); if(nm) nm.textContent = p.name;
       };

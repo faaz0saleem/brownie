@@ -121,7 +121,7 @@ function db_init(PDO $pdo, string $driver): void {
     description TEXT, price INT, gradient VARCHAR(255), emoji VARCHAR(16), image_url $bigimg,
     flavors TEXT, sizes TEXT, allergens TEXT, contains_nuts INT DEFAULT 0,
     stock INT DEFAULT 0, sold INT DEFAULT 0, featured INT DEFAULT 0, active INT DEFAULT 1,
-    sort_order INT DEFAULT 0, created_at BIGINT, color VARCHAR(16), ink VARCHAR(16))");
+    sort_order INT DEFAULT 0, created_at BIGINT, color VARCHAR(16), ink VARCHAR(16), gallery $bigimg, photo_keys TEXT)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(40) PRIMARY KEY, name VARCHAR(160), email VARCHAR(191), phone VARCHAR(40),
     password_hash VARCHAR(255), google_id VARCHAR(64), avatar_url TEXT,
@@ -222,6 +222,20 @@ function db_migrate(PDO $pdo, string $driver = 'sqlite'): void {
       // kept (orders hold their own copies); the admin can delete them.
       $pdo->exec("UPDATE products SET active=0, featured=0 WHERE color IS NULL OR color=''");
       meta_set($pdo, $driver, 'schema', '3');
+      $level = 3;
+    }
+
+    if ($level < 4) {
+      // Several photos per colour. The one photo a product could have
+      // before becomes the first of its gallery.
+      try { $pdo->query("SELECT gallery FROM products LIMIT 1"); }
+      catch (Throwable $e) { $pdo->exec("ALTER TABLE products ADD COLUMN gallery " . ($driver === 'mysql' ? 'LONGTEXT' : 'TEXT')); }
+      try { $pdo->query("SELECT photo_keys FROM products LIMIT 1"); }
+      catch (Throwable $e) { $pdo->exec("ALTER TABLE products ADD COLUMN photo_keys TEXT"); }
+      $rows = $pdo->query("SELECT id, image_url FROM products WHERE image_url IS NOT NULL AND image_url<>'' AND (gallery IS NULL OR gallery='')")->fetchAll();
+      $up = $pdo->prepare("UPDATE products SET gallery=?, photo_keys=? WHERE id=?");
+      foreach ($rows as $r) $up->execute([json_encode([$r['image_url']]), json_encode(photo_keys([$r['image_url']])), $r['id']]);
+      meta_set($pdo, $driver, 'schema', '4');
     }
 
     db_enforce_sizes($pdo);
@@ -291,11 +305,35 @@ function now_ms(): int { return (int) round(microtime(true) * 1000); }
 function gen_id(): string { return base_convert((string) time(), 10, 36) . bin2hex(random_bytes(4)); }
 function jdec($s, $d = []) { if ($s === null || $s === '') return $d; $v = json_decode($s, true); return $v === null ? $d : $v; }
 
+/** The stored photos (data URLs) of a product row, in order. */
+function product_gallery(array $r): array {
+  $g = jdec($r['gallery'] ?? null, []);
+  if (!$g && !empty($r['image_url'])) $g = [$r['image_url']];
+  return array_values(array_filter($g, 'is_string'));
+}
+/** A short fingerprint per photo, stored beside them so listings never read the images. */
+function photo_keys(array $gallery): array { return array_map(fn($d) => substr(md5((string)$d), 0, 10), $gallery); }
+/**
+ * Photos go out as short URLs (/api/img/<id>/<n>?v=<key>), never inline:
+ * a page that lists eight colours would otherwise download every photo as
+ * text on every visit. The key changes when the photo does, so the image
+ * itself can be cached for a year.
+ */
+function photo_urls(array $r): array {
+  $keys = jdec($r['photo_keys'] ?? null, null);
+  if (!is_array($keys)) $keys = (isset($r['gallery']) || isset($r['image_url'])) ? photo_keys(product_gallery($r)) : [];
+  $out = [];
+  foreach ($keys as $i => $k) $out[] = '/api/img/' . rawurlencode($r['id']) . '/' . $i . '?v=' . $k;
+  return $out;
+}
+// Every column but the photo data itself.
+const PRODUCT_COLS = "id, slug, name, tagline, description, price, gradient, emoji, flavors, sizes, allergens, contains_nuts, stock, sold, featured, active, sort_order, created_at, color, ink, photo_keys";
 function map_product(array $r): array {
+  $photos = photo_urls($r);
   return [
     'id'=>$r['id'],'slug'=>$r['slug'],'name'=>$r['name'],'tagline'=>$r['tagline'],
     'description'=>$r['description'],'price'=>(int)$r['price'],'gradient'=>$r['gradient'],
-    'emoji'=>$r['emoji'],'imageUrl'=>$r['image_url'],'flavors'=>jdec($r['flavors']),
+    'emoji'=>$r['emoji'],'imageUrl'=>$photos[0] ?? null,'photos'=>$photos,'flavors'=>jdec($r['flavors']),
     'sizes'=>jdec($r['sizes']),'allergens'=>jdec($r['allergens']),'details'=>jdec($r['allergens']),
     'containsNuts'=>(bool)$r['contains_nuts'],'stock'=>(int)$r['stock'],'sold'=>(int)$r['sold'],
     'featured'=>(bool)$r['featured'],'active'=>(bool)$r['active'],'sort'=>(int)$r['sort_order'],
@@ -327,11 +365,11 @@ function map_user(array $r): array {
 // The shop only ever sees bandanas: a row with no print colour is from the
 // brownie days and stays out of the public list even if it is still active.
 function products_all(bool $includeInactive = false): array {
-  $sql = "SELECT * FROM products " . ($includeInactive ? '' : "WHERE active=1 AND color IS NOT NULL AND color<>''") . " ORDER BY featured DESC, sort_order ASC";
+  $sql = "SELECT " . PRODUCT_COLS . " FROM products " . ($includeInactive ? '' : "WHERE active=1 AND color IS NOT NULL AND color<>''") . " ORDER BY featured DESC, sort_order ASC";
   return array_map('map_product', db()->query($sql)->fetchAll());
 }
 function product_get(string $idOrSlug, bool $includeInactive = false): ?array {
-  $st = db()->prepare("SELECT * FROM products WHERE (id=? OR slug=?) " . ($includeInactive ? '' : "AND active=1 AND color IS NOT NULL AND color<>''") . " LIMIT 1");
+  $st = db()->prepare("SELECT " . PRODUCT_COLS . " FROM products WHERE (id=? OR slug=?) " . ($includeInactive ? '' : "AND active=1 AND color IS NOT NULL AND color<>''") . " LIMIT 1");
   $st->execute([$idOrSlug, $idOrSlug]);
   $r = $st->fetch();
   return $r ? map_product($r) : null;
@@ -348,17 +386,59 @@ function product_update(string $id, array $patch): ?array {
   }
   foreach (['name' => 80, 'tagline' => 120, 'description' => 1200] as $k => $max)
     if (isset($patch[$k])) $patch[$k] = clean_text($patch[$k], $max);
+  // Photos are managed by product_photos_set(); imageUrl here is only the
+  // public URL and must never be written back over the stored image.
+  unset($patch['imageUrl'], $patch['photos']);
   $m = array_merge($cur, $patch);
   if (!empty($m['sizes'][0]['price'])) $m['price'] = (int)$m['sizes'][0]['price'];
   $st = db()->prepare("UPDATE products SET slug=?, name=?, tagline=?, description=?, price=?, gradient=?, emoji=?,
-    image_url=?, flavors=?, sizes=?, allergens=?, contains_nuts=?, stock=?, sold=?, featured=?, active=?, sort_order=?,
+    flavors=?, sizes=?, allergens=?, contains_nuts=?, stock=?, sold=?, featured=?, active=?, sort_order=?,
     color=?, ink=? WHERE id=?");
   $st->execute([$m['slug'],$m['name'],$m['tagline'],$m['description'],(int)$m['price'],$m['gradient'],$m['emoji'],
-    $m['imageUrl'] ?? null, json_encode($m['flavors']), json_encode($m['sizes']), json_encode($m['allergens']),
+    json_encode($m['flavors']), json_encode($m['sizes']), json_encode($m['allergens']),
     !empty($m['containsNuts'])?1:0, max(0, (int)$m['stock']), (int)$m['sold'], !empty($m['featured'])?1:0,
     !empty($m['active'])?1:0, (int)($m['sort'] ?? 0), $m['color'], $m['ink'], $id]);
   return product_get($id, true);
 }
+/* ---------------- product photos ---------------- */
+const MAX_PHOTOS = 6;
+function product_row(string $id): ?array {
+  $st = db()->prepare("SELECT * FROM products WHERE id=? OR slug=? LIMIT 1"); $st->execute([$id, $id]);
+  $r = $st->fetch(); return $r ?: null;
+}
+/** Replaces a product's photos (data URLs, first = main). */
+function product_photos_set(string $id, array $list): ?array {
+  $r = product_row($id); if (!$r) return null;
+  $list = array_slice(array_values($list), 0, MAX_PHOTOS);
+  db()->prepare("UPDATE products SET gallery=?, image_url=?, photo_keys=? WHERE id=?")
+     ->execute([json_encode($list), $list[0] ?? null, json_encode(photo_keys($list)), $r['id']]);
+  return product_get($r['id'], true);
+}
+/** add | remove | main, by position. Returns the product, or an error string. */
+function product_photo_edit(string $id, string $action, ?int $n = null, string $data = '') {
+  $r = product_row($id); if (!$r) return 'Not found';
+  $g = product_gallery($r);
+  if ($action === 'add') {
+    if (count($g) >= MAX_PHOTOS) return 'A colour can have up to ' . MAX_PHOTOS . ' photos. Remove one first.';
+    $g[] = $data;
+  } elseif ($action === 'main') {
+    if (!isset($g[$n])) return 'No such photo.';
+    $p = $g[$n]; array_splice($g, $n, 1); array_unshift($g, $p);
+  } elseif ($action === 'remove') {
+    if (!isset($g[$n])) return 'No such photo.';
+    array_splice($g, $n, 1);
+  }
+  return product_photos_set($r['id'], $g);
+}
+/** The bytes and type of one stored photo, for /api/img. */
+function product_photo_bytes(string $id, int $n): ?array {
+  $r = product_row($id); if (!$r) return null;
+  $g = product_gallery($r);
+  if (!isset($g[$n]) || !preg_match('#^data:(image/(?:png|jpeg|jpg|webp|gif));base64,(.*)$#s', $g[$n], $m)) return null;
+  $bin = base64_decode(preg_replace('/\s+/', '', $m[2]), true);
+  return $bin === false ? null : ['type' => $m[1] === 'image/jpg' ? 'image/jpeg' : $m[1], 'bytes' => $bin];
+}
+
 function product_create(array $d): array {
   $id = gen_id();
   $slug = $d['slug'] ?? strtolower(preg_replace('/[^a-z0-9]+/i', '-', trim($d['name'] ?? 'bandana')));

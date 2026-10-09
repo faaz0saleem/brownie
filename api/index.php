@@ -265,6 +265,19 @@ try {
     err('Not found',404);
   }
 
+  // ---- product photos, as real image files ----
+  // /api/img/<product id>/<n>?v=<hash>. The hash in the URL changes with the
+  // photo, so this can be cached for a year. Hidden products' photos are
+  // still served: past orders and the admin show them.
+  if ($seg[0]==='img' && count($seg)===3 && $method==='GET') {
+    $img = product_photo_bytes(rawurldecode($seg[1]), (int)$seg[2]);
+    if (!$img) { http_response_code(404); header('Content-Type: text/plain'); echo 'Not found'; exit; }
+    header('Content-Type: ' . $img['type']);
+    header('Cache-Control: public, max-age=31536000, immutable');
+    header('Content-Length: ' . strlen($img['bytes']));
+    echo $img['bytes']; exit;
+  }
+
   // ---- products ----
   if ($seg[0]==='products') {
     if (count($seg)===1 && $method==='GET') { $admin=hash_equals(cfg()['adminToken'], (string)($_SERVER['HTTP_X_ADMIN_TOKEN']??'')); out(products_all($admin)); }
@@ -273,16 +286,34 @@ try {
     if (count($seg)===2 && $method==='GET') { $p=product_get($pid); $p?out($p):err('Not found',404); }
     if (count($seg)===2 && $method==='PATCH') { require_admin(); $p=product_update($pid, body()); $p?out($p):err('Not found',404); }
     if (count($seg)===2 && $method==='DELETE') { require_admin(); product_delete($pid)?out(['ok'=>true]):err('Not found',404); }
+    // Photos. PUT …/image makes an upload the main photo; POST …/photos adds
+    // one; DELETE …/photos/<n> removes one; POST …/photos/<n>/main promotes
+    // it; DELETE …/image removes them all.
+    $readImage = function () {
+      $img = body(8000000)['imageUrl'] ?? '';
+      if (!is_string($img) || $img === '') err('No image.');
+      if (strlen($img) > 6000000) err('Image too large.');
+      if (!preg_match('#^data:image/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$#', $img)) err('Unsupported image format.');
+      return $img;
+    };
     if (($seg[2]??'')==='image') {
       require_admin();
       if ($method==='PUT'){
-        $img=body(8000000)['imageUrl']??'';
-        if(!is_string($img)||$img==='') err('No image.');
-        if(strlen($img)>6000000) err('Image too large.');
-        if(!preg_match('#^data:image/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$#', $img)) err('Unsupported image format.');
-        out(product_update($pid,['imageUrl'=>$img]));
+        $r = product_photo_edit($pid, 'add', null, $readImage());
+        if (is_string($r)) err($r);
+        $r = product_photo_edit($pid, 'main', count($r['photos']) - 1);
+        is_string($r) ? err($r) : out($r);
       }
-      if ($method==='DELETE'){ out(product_update($pid,['imageUrl'=>null])); }
+      if ($method==='DELETE'){ $r = product_photos_set($pid, []); $r ? out($r) : err('Not found', 404); }
+    }
+    if (($seg[2]??'')==='photos') {
+      require_admin();
+      $n = isset($seg[3]) ? (int)$seg[3] : null;
+      if ($method==='POST' && $n === null) $r = product_photo_edit($pid, 'add', null, $readImage());
+      elseif ($method==='POST' && ($seg[4]??'')==='main') $r = product_photo_edit($pid, 'main', $n);
+      elseif ($method==='DELETE' && $n !== null) $r = product_photo_edit($pid, 'remove', $n);
+      else err('Not found', 404);
+      is_string($r) ? err($r) : out($r);
     }
     err('Not found',404);
   }

@@ -7,7 +7,7 @@
   function render(){
     var cart = getCart();
     if(!cart.length){
-      root.innerHTML = '<div class="empty"><div class="bn">'+bandanaSVG('#FF6A13','#FFFFFF')+'</div><h2>Your bag is empty.</h2><p>Eight colours, one great print. Any '+FUDGIO.bundleQty+' take '+FUDGIO.bundlePct+'% off.</p><a href="/shop" class="btn btn-primary">Shop all colours</a></div>';
+      root.innerHTML = '<div class="empty">'+cutHTML(visibleProducts()[0] || {})+'<h2>Your bag is empty.</h2><p>Eight colours, one great print. Any '+FUDGIO.bundleQty+' take '+FUDGIO.bundlePct+'% off.</p><a href="/shop" class="btn btn-primary">Shop all colours</a></div>';
       return;
     }
     var blocked = cart.some(shortOf), nudge = nudgeText();

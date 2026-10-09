@@ -22,7 +22,7 @@
           return '<li class="'+(i<=idx?'done':'')+(i===idx?' now':'')+'"><div><b>'+esc(label)+'</b>'+(hist[s] ? '<small>'+esc(when(hist[s]))+'</small>' : '')+'</div></li>';
         }).join('')+'</ol>';
     var items = (o.items||[]).map(function(li){
-      var art = li.color ? '<div class="bn">'+bandanaSVG(li.color, li.ink)+'</div>' : '';
+      var art = li.color ? lineArt({ id: li.slug || '', name: li.name, color: li.color, ink: li.ink }) : '';
       return '<div class="sum-line"><span class="t">'+art+'<span class="q">'+(+li.qty)+'</span></span><span class="nm">'+esc(li.name)+'</span><span class="p">'+money(li.lineTotal, reg)+'</span></div>';
     }).join('');
     var c = o.customer || {};
