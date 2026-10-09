@@ -11,6 +11,9 @@ let STATUSES = ['Awaiting Payment', 'Pending', 'Confirmed', 'Packed', 'Shipped',
 const MON = (o, n) => (o && o.currency === 'USD') ? '$' + Number(n).toLocaleString('en-US') : RS(n);
 // The bandana drawing from the shop (admin/art.js is a copy written by the build).
 const ART = (c, i) => (window.bandanaSVG ? bandanaSVG(c || '#FF6A13', i || '#FFFFFF') : '');
+// Photos come back as /api/img/... on the shop's domain; the admin lives on
+// its own subdomain, so point them at the API's host.
+const IMGURL = (u) => !u ? '' : (u.indexOf('/api/') === 0 ? API_BASE.replace(/\/api$/, '') + u : u);
 const SWATCH = (c) => `<span class="sw-dot" style="background:${esc(c || '#ccc')}"></span>`;
 const ADMIN_RECAPTCHA = (window.FUDGIO_ADMIN && window.FUDGIO_ADMIN.recaptcha) || { enabled: false, siteKey: '' };
 let recaptchaScriptPromise = null;
@@ -315,7 +318,12 @@ async function loadInventory() {
     <div class="inv-card">
       <div class="inv-top" style="background:#efe8de">
         ${!p.active ? '<span class="inactive-flag">Hidden</span>' : ''}
-        ${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" class="inv-img">` : `<span class="inv-art">${ART(p.color, p.ink)}</span>`}
+        ${p.imageUrl ? `<img src="${esc(IMGURL(p.imageUrl))}" alt="${esc(p.name)}" class="inv-img">` : `<span class="inv-art">${ART(p.color, p.ink)}</span>`}
+      </div>
+      <div class="inv-photos">
+        ${(p.photos || []).map((u, n) => `<div class="ph-thumb${n ? '' : ' main'}"><img src="${esc(IMGURL(u))}" alt="">
+          <div class="ph-tools">${n ? `<button title="Make this the main photo" onclick="photoMain('${p.id}',${n})">★</button>` : '<span title="Main photo">★</span>'}<button title="Remove" onclick="photoRemove('${p.id}',${n})">×</button></div></div>`).join('')}
+        ${(p.photos || []).length < 6 ? `<label class="ph-add" title="Add photos">＋<input type="file" accept="image/*" multiple style="display:none" onchange="uploadPhotos('${p.id}', this)"></label>` : ''}
       </div>
       <div class="inv-body">
         <h4>${esc(p.name)} ${stockChip(p.stock)}</h4>
@@ -334,10 +342,10 @@ async function loadInventory() {
           <button class="btn-sm btn-toggle" onclick="toggleActive('${p.id}', ${p.active})">${p.active ? '🚫 Hide' : '✅ Show'}</button>
         </div>
         <div class="inv-actions" style="margin-top:8px">
-          <label class="btn-sm btn-toggle upload-label">📷 ${p.imageUrl ? 'Replace' : 'Add'} image
-            <input type="file" accept="image/*" style="display:none" onchange="uploadImage('${p.id}', this)">
+          <label class="btn-sm btn-toggle upload-label">📷 Add photos
+            <input type="file" accept="image/*" multiple style="display:none" onchange="uploadPhotos('${p.id}', this)">
           </label>
-          ${p.imageUrl ? `<button class="btn-sm btn-toggle" onclick="removeImage('${p.id}')">🗑 Remove</button>` : `<button class="btn-sm btn-toggle" onclick="markOutOfStock('${p.id}')">Out of stock</button>`}
+          <button class="btn-sm btn-toggle" onclick="markOutOfStock('${p.id}')">Out of stock</button>
           <button class="btn-sm btn-danger" onclick="deleteProduct('${p.id}', '${esc(p.name).replace(/'/g, "\\'")}')">🗑 Delete</button>
         </div>
       </div>
@@ -374,6 +382,26 @@ async function deleteProduct(id, name) {
   toast(res.ok ? 'Product deleted' : 'Delete failed');
   loadInventory(); loadDashboard();
 }
+// Several photos per colour, the first is the main one. Each is resized in
+// the browser (long side 1600px) before upload, so phone photos are fine.
+async function uploadPhotos(id, input) {
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+  toast('Uploading ' + files.length + ' photo(s)…');
+  let done = 0;
+  for (const file of files) {
+    if (file.size > 15 * 1024 * 1024) { toast(file.name + ' is too large (max 15MB)'); continue; }
+    const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
+    const small = await downscale(dataUrl, 1600);
+    const res = await api('/products/' + id + '/photos', { method: 'POST', body: JSON.stringify({ imageUrl: small }) });
+    if (res.ok) done++; else { const e = await res.json().catch(() => ({})); toast(e.error || 'Upload failed'); break; }
+  }
+  input.value = '';
+  if (done) toast(done + ' photo(s) added — they show on the shop now 📷');
+  loadInventory();
+}
+async function photoMain(id, n) { await api('/products/' + id + '/photos/' + n + '/main', { method: 'POST' }); toast('Main photo set'); loadInventory(); }
+async function photoRemove(id, n) { if (!confirm('Remove this photo?')) return; await api('/products/' + id + '/photos/' + n, { method: 'DELETE' }); toast('Photo removed'); loadInventory(); }
 function uploadImage(id, input) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -396,12 +424,12 @@ function downscale(dataUrl, maxW) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, maxW / img.width);
+      const scale = Math.min(1, maxW / Math.max(img.width, img.height));
       const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
+      resolve(canvas.toDataURL('image/jpeg', 0.86));
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
@@ -499,8 +527,29 @@ async function loadSettings() {
       ${row('Instagram', txt('setIg', s.instagram, '@fudgio'))}
       ${row('WhatsApp number', txt('setWa', s.whatsapp, '923001234567'), 'With country code, digits only.')}
       <button class="btn-sm btn-save" style="margin-top:14px" onclick="saveSettings()">💾 Save settings</button>
-    </div></div>`;
+    </div></div>
+    <div class="panel" style="margin-top:20px">
+      <h3>📸 Home page banner photo</h3>
+      <div class="panel-sub">A photo of someone wearing a Fudgio bandana, shown at the top of the home page instead of the illustration. Portrait works best (about 5:6); it is cropped to an arch.</div>
+      <div id="bannerBox" style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap"></div>
+    </div>`;
+  loadBanner();
 }
+async function loadBanner() {
+  const box = document.getElementById('bannerBox'); if (!box) return;
+  const st = await (await fetch(API_BASE + '/storefront', { credentials: 'include' })).json().catch(() => ({}));
+  box.innerHTML = (st.bannerUrl ? `<img src="${esc(IMGURL(st.bannerUrl))}" alt="" style="width:180px;aspect-ratio:5/6;object-fit:cover;border-radius:90px 90px 8px 8px">` : '<div class="muted">No photo yet — the illustration is showing.</div>')
+    + `<label class="btn-sm btn-save upload-label">📷 ${st.bannerUrl ? 'Replace' : 'Upload'} photo<input type="file" accept="image/*" style="display:none" onchange="uploadBanner(this)"></label>`
+    + (st.bannerUrl ? '<button class="btn-sm btn-toggle" onclick="removeBanner()">🗑 Remove</button>' : '');
+}
+async function uploadBanner(input) {
+  const f = input.files && input.files[0]; if (!f) return;
+  const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+  const res = await api('/banner', { method: 'PUT', body: JSON.stringify({ imageUrl: await downscale(dataUrl, 1600) }) });
+  toast(res.ok ? 'Banner photo is live ✓' : ((await res.json().catch(() => ({}))).error || 'Upload failed'));
+  loadBanner();
+}
+async function removeBanner() { if (!confirm('Remove the banner photo? The illustration comes back.')) return; await api('/banner', { method: 'DELETE' }); toast('Banner photo removed'); loadBanner(); }
 async function saveSettings() {
   const v = (id) => document.getElementById(id).value;
   const body = { deliveryFee: v('setFee'), freeDeliveryOver: v('setFree'), daysPk: v('setDaysPk'),

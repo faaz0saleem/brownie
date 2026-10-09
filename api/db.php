@@ -853,6 +853,23 @@ function orders_csv(): string {
   return $out;
 }
 
+/* ---------------- banner photo ----------------
+   One photo for the top of the home page — someone wearing a Fudgio bandana.
+   Kept as its own settings row so the store settings stay small; served as
+   an image from /api/banner?v=<key>. */
+function banner_key(): string { return meta_get(db(), 'banner_key'); }
+function banner_set(?string $data): void {
+  $d = db_driver();
+  meta_set(db(), $d, 'banner', $data ?? '');
+  meta_set(db(), $d, 'banner_key', $data ? substr(md5($data), 0, 10) : '');
+}
+function banner_bytes(): ?array {
+  $v = meta_get(db(), 'banner');
+  if (!preg_match('#^data:(image/(?:png|jpeg|jpg|webp));base64,(.*)$#s', $v, $m)) return null;
+  $bin = base64_decode(preg_replace('/\s+/', '', $m[2]), true);
+  return $bin === false ? null : ['type' => $m[1] === 'image/jpg' ? 'image/jpeg' : $m[1], 'bytes' => $bin];
+}
+
 /* ---------------- newsletter ---------------- */
 /** Adds an email to "get new colours first". Signing up twice is not an error. */
 function subscriber_add(string $email, string $source): array {

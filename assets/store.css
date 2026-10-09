@@ -781,3 +781,39 @@ body.lock{overflow:hidden}
 .lost .rd{width:220px;animation:drift 8s ease-in-out infinite;--r:-8deg}
 .fold-demo>.rd{width:110px}
 .fold-demo .fd-tri .rd{width:130px}
+
+/* ---------------- people wearing it ---------------- */
+.hero-person{position:absolute;left:14%;top:2%;width:62%;margin:0;z-index:1;filter:drop-shadow(0 30px 40px rgba(0,0,0,.45));animation:dropIn 1.1s var(--ease) both}
+.hero-person svg{width:100%;height:auto;display:block}
+.hero-person img{width:100%;aspect-ratio:5/6;object-fit:cover;border-radius:999px 999px 0 0;display:block}
+.hero-person.swap{animation:swapIn .7s var(--ease)}
+.hero-art .f1{right:0;top:4%;width:34%;--r:10deg;z-index:0}
+.hero-art .f2{left:0;bottom:4%;width:40%;--r:-6deg;z-index:2}
+.hero-art .sticker{z-index:3}
+.looks{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.look-card{display:flex;flex-direction:column;gap:16px;text-decoration:none;color:inherit}
+.look-art{border-radius:999px 999px 0 0;overflow:hidden;transition:transform .6s var(--ease)}
+.look-art svg{display:block;width:100%;height:auto;transition:transform .8s var(--ease)}
+.look-card:hover .look-art svg{transform:scale(1.04)}
+.look-cap{display:flex;align-items:center;gap:14px;border-top:1px solid var(--line);padding-top:14px}
+.look-cap .mono{color:var(--muted);font-size:.875rem}
+.look-cap b{font-size:1.25rem;font-weight:600;letter-spacing:-.01em;flex:1}
+.look-cap span:last-child{display:inline-flex;align-items:center;gap:8px;color:var(--soft);font-size:.95rem}
+.look-card:hover .look-cap span:last-child{color:var(--orange-2)}
+.look-card .arrow{width:18px;height:18px;transition:transform .25s ease}
+.look-card:hover .arrow{transform:translateX(4px)}
+.pd-stage .v-worn{inset:0;display:block}
+.pd-stage .v-worn svg{width:100%;height:100%;display:block;object-fit:cover}
+.pd-stage:has(.v-worn.on){background:#FF6A13}
+.vt.v-wornt{background:#FF6A13}
+.vt.v-wornt svg{width:100%;height:100%;display:block}
+@media (max-width:900px){ .looks{grid-template-columns:1fr 1fr} .looks .look-card:last-child{display:none} }
+@media (max-width:640px){
+  .looks{grid-template-columns:1fr;gap:28px} .looks .look-card:last-child{display:flex}
+  .hero-person{left:12%;width:64%}
+}
+@media (prefers-reduced-motion:reduce){ .hero-person,.hero-person.swap{animation:none} }
+.hero-person.is-photo{filter:drop-shadow(0 30px 40px rgba(0,0,0,.5))}
+/* rotated art near the edge must never make the page scroll sideways */
+main{overflow-x:clip}
+@media (max-width:640px){ .hero-art .f1{right:3%} }

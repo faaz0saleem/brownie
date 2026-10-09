@@ -221,6 +221,18 @@ const WAYS = [
 const foldArt = () => S.renders(P[0])
   ? `<div class="fold-demo" aria-hidden="true">${S.cutHTML(P[0])}<span class="fd-arrow">→</span><div class="fd-tri">${S.cutHTML(P[0], { view: 'fold' })}</div></div>`
   : `<div class="fold-demo" aria-hidden="true"><div class="bn">${S.bandanaSVG(P[0].color, P[0].ink)}</div><span class="fd-arrow">→</span><div class="fd-tri"><div class="bn">${S.bandanaSVG(P[0].color, P[0].ink)}</div></div></div>`;
+const LOOKS = [
+  { style: 'head', slug: 'classic-red', bg: '#FF6A13', label: 'On the head', skin: '#B8805C', skinShade: '#9A6446', hair: '#17110E', shirt: '#141414' },
+  { style: 'neck', slug: 'navy', bg: '#FF2E88', label: 'Round the neck', skin: '#E2B48F', skinShade: '#C48F6A', hair: '#3B2416', shirt: '#F4F1EC' },
+  { style: 'band', slug: 'mustard', bg: '#1F4B38', label: 'As a headband', skin: '#6E4630', skinShade: '#55331F', hair: '#0f0a08', shirt: '#141414' },
+];
+const lookbook = (heading = 'h2') => `<section class="paper look" aria-labelledby="lookTitle"><div class="wrap sec">
+  <div class="sec-head"><div class="stack"><p class="eyebrow">Worn by you</p><${heading} class="h2" id="lookTitle">Made to be worn.</${heading}></div>
+    <p>One square, endless looks. Tie it on, knot it at the neck, or roll it into a headband — every colour works every way.</p></div>
+  <div class="looks">${LOOKS.map((l, i) => { const p = S.getProduct(l.slug) || P[i]; return `<a class="look-card reveal-me" href="${p.path}">
+    <div class="look-art">${S.personSVG({ ...l, color: p.color, ink: p.ink, idSuffix: 'l' + i, title: 'Someone wearing the ' + p.name + ' bandana ' + l.label.toLowerCase() })}</div>
+    <div class="look-cap"><span class="mono">0${i + 1}</span><b>${l.label}</b><span>${e(p.name)} ${ARROW}</span></div></a>`; }).join('')}</div>
+</div></section>`;
 const wear = (detailed = false) => `<section id="wear" class="dark" aria-labelledby="wearTitle"><div class="wrap sec wear">
   <div class="wear-intro">${detailed
     ? `<p class="eyebrow">Start here</p><h2 class="h2" id="wearTitle">Fold it corner<br>to corner.</h2>
@@ -294,11 +306,11 @@ const hero = `<section class="dark"><div class="wrap"><div class="hero">
     <div class="hero-specs fade d4"><span>55 cm square</span><span>100% cotton</span><span>Delivered in <span data-days>${D.daysPk}</span> days</span></div>
   </div>
   <div class="hero-art fade d1">
-    <div class="float f1"><div class="hero-bn">${S.cutHTML(S.getProduct('navy') || P[2], { big: true, eager: true, sizes: '(max-width:640px) 42vw, 260px' })}</div></div>
-    <div class="float f2"><div class="hero-bn">${S.cutHTML(S.getProduct('mustard') || P[4], { big: true, eager: true, sizes: '(max-width:640px) 38vw, 235px' })}</div></div>
-    <div class="float f3"><div class="hero-bn">${S.cutHTML(P[0], { big: true, eager: true, sizes: '(max-width:640px) 66vw, 370px' })}</div></div>
+    <div class="float f1"><div class="hero-bn">${S.cutHTML(S.getProduct('navy') || P[2], { big: true, eager: true, sizes: '(max-width:640px) 38vw, 220px' })}</div></div>
+    <figure class="hero-person" data-hero-person>${S.personSVG({ style: 'head', color: P[0].color, ink: P[0].ink, bg: '#FF6A13', idSuffix: 'h', title: 'Someone wearing the ' + P[0].name + ' bandana on their head' })}</figure>
+    <div class="float f2"><div class="hero-bn">${S.cutHTML(P[0], { view: 'fold', big: true, eager: true, sizes: '(max-width:640px) 44vw, 260px' })}</div></div>
     <a class="sticker" href="#bundle" data-sticker-wrap aria-label="Buy any ${D.bundleQty}, save ${D.bundlePct} percent">
-      <svg viewBox="0 0 132 132" aria-hidden="true"><path id="stickerPath" d="M66 66m-50 0a50 50 0 1 1 100 0a50 50 0 1 1-100 0" fill="none"/><text><textPath href="#stickerPath" data-sticker>Buy any ${D.bundleQty} · save ${D.bundlePct}% · Buy any ${D.bundleQty} · save ${D.bundlePct}% · </textPath></text></svg>
+      <svg viewBox="0 0 132 132" aria-hidden="true"><path id="stickerPath" d="M66 66m-50 0a50 50 0 1 1 100 0a50 50 0 1 1-100 0" fill="none"/><text><textPath href="#stickerPath" textLength="306" lengthAdjust="spacing" data-sticker>Buy any ${D.bundleQty} · save ${D.bundlePct}% · Buy any ${D.bundleQty} · save ${D.bundlePct}% · </textPath></text></svg>
       <b><span data-pct>${D.bundlePct}</span>%<small>off ${D.bundleQty}+</small></b>
     </a>
   </div>
@@ -317,7 +329,7 @@ add('index.html', {
   title: 'Fudgio — Printed Cotton Bandanas in 8 Colours · Shipped Worldwide',
   desc: `Square printed bandanas in eight colours, 100% cotton, 55 cm. Buy any ${D.bundleQty}, save ${D.bundlePct}%. Cash on delivery across Pakistan and shipping worldwide.`,
   ld: [org, { '@type': 'WebSite', '@id': SITE + '/#website', url: SITE, name: BRAND, publisher: { '@id': SITE + '/#store' }, inLanguage: 'en' }],
-}, hero + marquee() + shopSection() + wear() + band());
+}, hero + marquee() + shopSection() + wear() + lookbook() + band());
 
 // Shop
 add('shop.html', {
@@ -354,7 +366,7 @@ add('how-to-wear.html', {
   desc: 'Five ways to wear a bandana, step by step: on your head, round your neck, on your wrist, tied to a bag, or hanging from a back pocket.',
   ld: [crumbs([['Home', '/'], ['How to wear', '/how-to-wear']]), { '@type': 'HowTo', name: 'How to wear a bandana on your head', step: WAYS[0][2].map((t, i) => ({ '@type': 'HowToStep', position: i + 1, text: t })) }],
 }, pageHead('How to wear', 'Five ways<br>to wear it.', 'Every one starts the same way: lay it flat, fold it corner to corner. Here is what to do next.', 'How to wear')
-  + wear(true).replace('<section id="wear" class="dark"', '<section class="dark rule-top"')
+  + lookbook() + wear(true).replace('<section id="wear" class="dark"', '<section class="dark rule-top"')
   + `<section class="paper"><div class="wrap sec"><div class="sec-head"><div class="stack"><p class="eyebrow">Now pick one</p><h2 class="h2">Choose your colour</h2></div><p>Same size and print on every one.</p></div>${grid({ limit: 4 })}<p style="margin-top:36px"><a class="link" href="/shop">See all <span data-count>${P.length}</span> colours</a></p></div></section>` + band());
 
 // Delivery & returns

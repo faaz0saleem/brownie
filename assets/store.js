@@ -220,12 +220,13 @@ function swatchesHTML(cur){
    the drawing three ways — flat, folded into a triangle, and close up. */
 function stageViews(p){
   if(p.photos && p.photos.length) return p.photos.map(function(u, i){ return { key: 'p' + i, label: 'Photo ' + (i + 1), photo: u }; });
-  return [{ key: 'flat', label: 'Flat' }, { key: 'fold', label: 'Folded' }, { key: 'zoom', label: 'Close-up' }];
+  return [{ key: 'flat', label: 'Flat' }, { key: 'fold', label: 'Folded' }, { key: 'zoom', label: 'Close-up' }, { key: 'worn', label: 'Worn' }];
 }
 function stageHTML(p){
   var views = stageViews(p), r = renders(p);
   return views.map(function(v, i){
     var hide = i ? ' aria-hidden="true"' : '', alt = i ? '' : p.name + ' bandana', on = i ? '' : ' on';
+    if(v.key === 'worn') return '<div class="v v-worn'+on+'" data-v="worn"'+hide+'>'+personSVG({ style: 'neck', color: p.color, ink: p.ink, bg: '#FF6A13', skin: '#E2B48F', skinShade: '#C48F6A', hair: '#3B2416', shirt: '#F4F1EC', idSuffix: 'w' + p.slug, title: 'Someone wearing the ' + p.name + ' bandana round the neck' })+'</div>';
     if(v.photo) return '<div class="v v-photo'+on+'" data-v="'+v.key+'"'+hide+'>'+imgTag(v.photo, alt, !i)+'</div>';
     if(r){
       var view = v.key === 'zoom' ? 'detail' : v.key;
@@ -237,6 +238,7 @@ function stageHTML(p){
 function viewThumb(p, v){
   var r = renders(p);
   if(v.photo) return '<span class="vt v-photo">'+imgTag(v.photo, '', false)+'</span>';
+  if(v.key === 'worn') return '<span class="vt v-wornt">'+personSVG({ style: 'neck', color: p.color, ink: p.ink, bg: '#FF6A13', skin: '#E2B48F', skinShade: '#C48F6A', hair: '#3B2416', shirt: '#F4F1EC', idSuffix: 't' + p.slug })+'</span>';
   if(r) return '<span class="vt is-render">'+imgTag(r[(v.key === 'zoom' ? 'detail' : v.key) + 'Sm'], '', false)+'</span>';
   return '<span class="vt v-'+v.key+'"><span class="bn">'+bandanaSVG(p.color, p.ink)+'</span></span>';
 }
@@ -440,7 +442,7 @@ function applySettings(d){
   FUDGIO.usdRate      = Math.max(1, n(d.usdRate, FUDGIO.usdRate));
   FUDGIO.bundleQty    = n(d.bundleQty, FUDGIO.bundleQty);
   FUDGIO.bundlePct    = n(d.bundlePct, FUDGIO.bundlePct);
-  ['daysPk','daysIntl','instagram','whatsapp','announcement','intlPaymentLink'].forEach(function(k){ if(typeof d[k] === 'string' && (d[k] || k==='announcement' || k==='instagram' || k==='whatsapp' || k==='intlPaymentLink')) FUDGIO[k] = d[k]; });
+  ['daysPk','daysIntl','instagram','whatsapp','announcement','intlPaymentLink','bannerUrl'].forEach(function(k){ if(typeof d[k] === 'string' && (d[k] || k==='announcement' || k==='instagram' || k==='whatsapp' || k==='intlPaymentLink' || k==='bannerUrl')) FUDGIO[k] = d[k]; });
   if(typeof d.intlEnabled === 'boolean') FUDGIO.intlEnabled = d.intlEnabled;
   FUDGIO.storeOpen = d.storeOpen !== false;
   FUDGIO.sms = !!d.smsVerification;
@@ -542,6 +544,14 @@ function paintBits(){
   set('[data-trio]', function(el){
     var v = visibleProducts(), pick = [v[0], v[2], v[4]].filter(Boolean);
     el.innerHTML = pick.map(function(p){ return cutHTML(p); }).join('');
+  });
+  // A real banner photo from the admin takes the illustration's place.
+  set('[data-hero-person]', function(el){
+    var img = el.querySelector('img');
+    if(FUDGIO.bannerUrl && (!img || img.getAttribute('src') !== FUDGIO.bannerUrl)){
+      el.innerHTML = '<img src="'+esc(FUDGIO.bannerUrl)+'" alt="Someone wearing a Fudgio bandana" fetchpriority="high"/>';
+      el.classList.add('is-photo');
+    }
   });
   set('[data-builder]', function(el){ el.innerHTML = builderHTML(); _pickNew = -1; });
   set('[data-sticker]', function(el){ var t = 'Buy any '+FUDGIO.bundleQty+' · save '+FUDGIO.bundlePct+'% · '; el.textContent = t+t; });
@@ -782,13 +792,18 @@ if(HAS_DOM) (function(){
     if(annEl && !REDUCE) setInterval(function(){ if(document.hidden || ANN.length < 2) return; _annI++; showAnnouncement(annEl, true); }, 4200);
 
     // the hero's front bandana tries on every colour, until you pick one
-    var front = document.querySelector('.f3 .hero-bn'), heroSw = document.querySelector('[data-hero-sw]');
+    var front = document.querySelector('.f2 .hero-bn'), person = document.querySelector('[data-hero-person]'), heroSw = document.querySelector('[data-hero-sw]');
     if(front && heroSw){
       var cycle = null, ci = 0;
       var wear = function(p){
         if(!p) return;
         front.classList.remove('swap'); void front.offsetWidth;
-        front.innerHTML = cutHTML(p, { big: true, eager: true, sizes: '(max-width:640px) 66vw, 370px' }); front.classList.add('swap');
+        front.innerHTML = cutHTML(p, { view: 'fold', big: true, eager: true, sizes: '(max-width:640px) 44vw, 260px' }); front.classList.add('swap');
+        if(person && !person.querySelector('img')){
+          person.classList.remove('swap'); void person.offsetWidth;
+          person.innerHTML = personSVG({ style: 'head', color: p.color, ink: p.ink, bg: '#FF6A13', idSuffix: 'h' + p.slug, title: 'Someone wearing the ' + p.name + ' bandana on their head' });
+          person.classList.add('swap');
+        }
         Array.prototype.forEach.call(heroSw.querySelectorAll('button'), function(b){ b.classList.toggle('on', b.getAttribute('data-c') === p.slug); });
         var nm = document.querySelector('[data-hero-name]'); if(nm) nm.textContent = p.name;
       };
