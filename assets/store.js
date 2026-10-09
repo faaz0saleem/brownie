@@ -1,382 +1,594 @@
-/* Fudgio shared storefront logic: catalog + cart (used by every page) */
-var FUDGIO = { whatsapp:'', email:'faaz.saleem@fudgio.com', currency:'Rs', freeOver:2500, deliveryFee:150, city:'Lahore' };
+/* Fudgio storefront: catalogue, currency, bag, and everything shared by every
+   page. Needs assets/art.js and assets/catalog.js loaded first.
 
-/* Three flavours, and exactly three ways to buy each one: a single brownie to
-   try it, a box of 6, or a box of 9. Keep this list in step with db_seed() in
-   api/db.php — the API is the source of truth once the site is live, and
-   loadLiveStock() below overwrites these prices with whatever the admin has
-   set. This copy exists so the page is never blank while that request runs. */
-var PRODUCTS = [
-  { id:'chocolate', slug:'chocolate', path:'/brownies/classic-chocolate', image:'/assets/brownie-chocolate.svg', name:'Classic Chocolate', emoji:'🍫',
-    gradient:'linear-gradient(135deg,#0b0a0a,#ff6a13)', featured:true, containsNuts:false,
-    tagline:'The original, impossibly fudgy',
-    desc:'Dense, gooey and deeply chocolatey with a crackly, paper-thin top. Made from our secret small-batch recipe using premium dark chocolate and real butter. The one everyone comes back for.',
-    sizes:[{label:'Single brownie',pieces:1,price:190},{label:'Box of 6',pieces:6,price:900},{label:'Box of 9',pieces:9,price:1290}],
-    allergens:['Gluten (wheat)','Dairy','Eggs','Soy'] },
-  { id:'nutty-delight', slug:'nutty-delight', path:'/brownies/nutty-delight', image:'/assets/brownie-nutty.svg', name:'Nutty Delight', emoji:'🌰',
-    gradient:'linear-gradient(135deg,#ff6a13,#ff2e88)', featured:true, containsNuts:true,
-    tagline:'Loaded with toasted nuts',
-    desc:'A rich chocolate brownie packed with roasted walnuts and hazelnuts for a satisfying crunch in every bite. Made from our secret small-batch recipe. For serious nut lovers.',
-    sizes:[{label:'Single brownie',pieces:1,price:220},{label:'Box of 6',pieces:6,price:1050},{label:'Box of 9',pieces:9,price:1490}],
-    allergens:['Tree nuts (walnut, hazelnut)','Gluten (wheat)','Dairy','Eggs','Soy'] },
-  { id:'salted-caramel', slug:'salted-caramel', path:'/brownies/salted-caramel', image:'/assets/brownie-caramel.svg', name:'Salted Caramel', emoji:'🍯',
-    gradient:'linear-gradient(135deg,#ff2e88,#0b0a0a)', featured:true, containsNuts:false,
-    tagline:'Sweet, salty, unforgettable',
-    desc:'Ribbons of golden salted caramel swirled through a fudgy chocolate brownie and finished with a pinch of flaky sea salt. Made from our secret small-batch recipe. The perfect balance of sweet and salty.',
-    sizes:[{label:'Single brownie',pieces:1,price:220},{label:'Box of 6',pieces:6,price:1050},{label:'Box of 9',pieces:9,price:1490}],
-    allergens:['Gluten (wheat)','Dairy','Eggs','Soy'] }
-];
+   Also runs inside the page build (scripts/build.mjs) with no DOM, so the
+   static HTML carries the same cards and product pages the browser draws —
+   anything touching `document` is behind HAS_DOM. */
+var HAS_DOM = typeof document !== 'undefined';
+
+/* Shop-wide settings. Defaults for the moment before /api/storefront answers;
+   the admin owns the real values and the server charges from them. */
+var FUDGIO = {
+  email: 'faaz.saleem@fudgio.com',
+  deliveryFee: 250, freeOver: 8000,                    // Pakistan, rupees
+  intlEnabled: true, intlShipping: 12, intlFreeOver: 0, // abroad, dollars
+  usdRate: 280, intlPaymentLink: '',
+  bundleQty: 3, bundlePct: 15,
+  daysPk: '3–5', daysIntl: '7–14',
+  instagram: '', whatsapp: '', announcement: '', storeOpen: true, sms: false
+};
+// The build writes the .env defaults next to the catalogue, so even the first
+// paint quotes the shop's real prices and fees.
+if (typeof FUDGIO_DEFAULTS !== 'undefined') for (var _k in FUDGIO_DEFAULTS) FUDGIO[_k] = FUDGIO_DEFAULTS[_k];
+
+/* ---------------- catalogue ---------------- */
+function makeProduct(c, isStatic){
+  return { id: c.slug, slug: c.slug, name: c.name, color: c.color, ink: c.ink,
+    tagline: c.tagline || '', desc: c.description || c.desc || '',
+    image: c.imageUrl || '', sort: c.sort || 0, hidden: false, isStatic: !!isStatic,
+    path: isStatic ? '/bandanas/' + c.slug : '/bandana?c=' + encodeURIComponent(c.slug),
+    sizes: (c.sizes || []).map(function(s){ return { label: s.label, pieces: s.pieces || 1, price: +s.price, usd: +s.usd || 0 }; }),
+    details: (c.details || []).slice() };
+}
+var PRODUCTS = (typeof FUDGIO_CATALOG !== 'undefined' ? FUDGIO_CATALOG : []).map(function(c){ return makeProduct(c, true); });
+function visibleProducts(){ return PRODUCTS.filter(function(p){ return !p.hidden; }).sort(function(a,b){ return a.sort - b.sort; }); }
 function getProduct(slug){ for(var i=0;i<PRODUCTS.length;i++) if(PRODUCTS[i].slug===slug) return PRODUCTS[i]; return null; }
-function fromPrice(p){ return Math.min.apply(null, p.sizes.map(function(s){return s.price;})); }
+function sizeOf(p){ return (p && p.sizes && p.sizes[0]) || { label: '55 cm square', pieces: 1, price: 4200, usd: 15 }; }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
-/* ---- Live stock & prices from the admin ----------------------------------
-   The catalog above renders instantly so the page is never blank, then this
-   layers the real numbers on top. Without it the admin's "out of stock" switch
-   would have no effect on the shop and a customer could reach checkout with a
-   brownie we cannot bake. `stock` is undefined until this resolves, and
-   inStock() treats undefined as available so nothing is hidden by mistake. */
-function inStock(p){ return !p || p.stock === undefined || p.stock > 0; }
-function loadLiveStock(done){
-  var finish = function(){ if(done) done(); };
-  try{
-    var x = new XMLHttpRequest();
-    x.open('GET','/api/products',true);
-    x.timeout = 6000;
-    x.onload = function(){
-      try{
-        var rows = JSON.parse(x.responseText);
-        // Only trust a well-formed, non-empty catalog. Anything else is left
-        // alone: showing the brownies we know about beats greying out the whole
-        // menu because one response came back odd.
-        if(Object.prototype.toString.call(rows) !== '[object Array]' || !rows.length) return finish();
-        var live = {}, matched = 0;
-        rows.forEach(function(r){ if(r && r.slug) live[r.slug] = r; });
-        PRODUCTS.forEach(function(p){ if(live[p.slug]) matched++; });
-        if(!matched) return finish();      // slugs don't line up — don't guess
-        PRODUCTS.forEach(function(p){
-          var r = live[p.slug];
-          if(!r) return;                                       // leave as-is
-          if(r.active === false){ p.stock = 0; return; }        // hidden by the admin
-          if(r.stock !== undefined && r.stock !== null && !isNaN(Number(r.stock))) p.stock = Number(r.stock);
-          if(r.sizes && r.sizes.length) p.sizes = r.sizes;
-          // A real photo uploaded in the admin always beats the drawn default.
-          if(r.imageUrl) p.image = r.imageUrl;
-        });
-      }catch(e){}
-      finish();
-    };
-    x.onerror = finish; x.ontimeout = finish;
-    x.send();
-  }catch(e){ finish(); }
-}
-
-
-/* The art for a product: its photo if one has been uploaded, otherwise the
-   drawn brownie, otherwise the emoji. Images are decorative here — the name
-   sits next to them in text — so alt stays empty for screen readers. */
-function productArtHTML(p, cls){
-  if(p.image) return '<img class="'+(cls||'art-img')+'" src="'+p.image+'" alt="" loading="lazy" decoding="async"/>';
-  return '<span>'+p.emoji+'</span>';
-}
-
-function money(n){ return FUDGIO.currency + ' ' + Number(n).toLocaleString('en-US'); }
-function getCart(){ try{ return JSON.parse(localStorage.getItem('fudgio_cart')||'[]'); }catch(e){ return []; } }
-function saveCart(c){ localStorage.setItem('fudgio_cart', JSON.stringify(c)); updateCount(); }
-function cartQty(){ return getCart().reduce(function(s,i){return s+i.qty;},0); }
-function updateCount(){ var el=document.getElementById('cartCount'); if(el) el.textContent=cartQty(); }
-function cartSubtotal(){ return getCart().reduce(function(s,i){return s+i.price*i.qty;},0); }
-function cartDelivery(){ return cartSubtotal()>=FUDGIO.freeOver?0:FUDGIO.deliveryFee; }
-function cartTotal(){ return cartSubtotal()+cartDelivery(); }
-function addToCart(product, sizeLabel, price, qty){
-  var cart=getCart(), key=product.id+'::'+(sizeLabel||'');
-  var ex=cart.filter(function(i){return i.key===key;})[0];
-  if(ex) ex.qty+=qty;
-  else cart.push({key:key,id:product.id,name:product.name,emoji:product.emoji,image:product.image||'',gradient:product.gradient,size:sizeLabel||'',price:price,qty:qty});
-  saveCart(cart); toast(qty+' × '+product.name+' added 🎉');
-}
-var _tt;
-function toast(m){ var t=document.getElementById('toast'); if(!t)return; t.textContent=m; t.classList.add('show'); clearTimeout(_tt); _tt=setTimeout(function(){t.classList.remove('show');},2000); }
-
-/* mobile hamburger + active nav (runs on every page) */
-(function(){
-  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
-  ready(function(){
-    var nav=document.querySelector('.site-header .nav'); if(!nav) return;
-    var links=nav.querySelector('.nav-links'); var cart=nav.querySelector('.cart-btn');
-    if(links && cart){
-      var b=document.createElement('button'); b.className='menu-toggle'; b.setAttribute('aria-label','Menu'); b.innerHTML='☰';
-      b.onclick=function(){ links.classList.toggle('open'); };
-      nav.insertBefore(b, cart);
-    }
-    // highlight the current page in the nav
-    var here=location.pathname.replace(/\/$/,'')||'/';
-    (links?links.querySelectorAll('a'):[]).forEach(function(a){
-      var href=a.getAttribute('href')||''; var path=href.split('#')[0].replace(/\/$/,'')||'/';
-      if((here==='/'&&href.indexOf('#')===0)) return;
-      if(path===here && !(here==='/' && href.charAt(0)==='#')) a.classList.add('active');
-    });
-    // Footer bits that appear on every page, filled here so each page does not
-    // need its own copy of the same two lines.
-    var yr=document.getElementById('yr'); if(yr) yr.textContent=new Date().getFullYear();
-    var mail=document.getElementById('mail');
-    if(mail && FUDGIO.email){ mail.href='mailto:'+FUDGIO.email; if(!mail.textContent.trim()) mail.textContent=FUDGIO.email; }
-    updateCount();
-  });
+/* ---------------- region ----------------
+   'PK': rupees, cash on delivery. 'INTL': dollars, paid before it ships.
+   Remembered; a first visit is guessed from the time zone. */
+var REGION = (function(){
+  if (typeof FUDGIO_FORCE_REGION !== 'undefined') return FUDGIO_FORCE_REGION;
+  try{ var r = localStorage.getItem('fudgio_region'); if(r==='PK' || r==='INTL') return r; }catch(e){}
+  try{ if(Intl.DateTimeFormat().resolvedOptions().timeZone === 'Asia/Karachi') return 'PK'; }catch(e){}
+  return 'INTL';
 })();
-
-/* validation helpers */
-function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test((e||'').trim()); }
-function validPhone(p){ var d=(p||'').replace(/\D/g,''); return d.length>=10 && d.length<=15; }
-
-/* anonymous visit tracking → admin analytics (fire-and-forget) */
-(function(){
-  try{
-    var vid=localStorage.getItem('fud_vid');
-    if(!vid){ vid=Date.now().toString(36)+Math.random().toString(36).slice(2,8); localStorage.setItem('fud_vid',vid); }
-    var x=new XMLHttpRequest(); x.open('POST','/api/visit',true); x.setRequestHeader('Content-Type','application/json');
-    x.send(JSON.stringify({page:location.pathname||'/', visitor:vid}));
-  }catch(e){}
-})();
-
-/* ---- Store settings: announcement bar, delivery pricing, open/closed ----
-   The admin owns the delivery fee and the free-delivery threshold, and the
-   server charges from those values. Fetching them here keeps the cart's
-   arithmetic identical to the server's instead of quoting from a stale
-   hardcoded copy. The defaults in FUDGIO above are only what shows for the
-   fraction of a second before this resolves. ---- */
-var FUDGIO_SLOGAN = 'Life is short. Eat the brownie. 🍫 Handcrafted brownies, delivered fresh across Lahore — Cash on Delivery.';
-var STORE_OPEN = true;
-/* True when an SMS gateway is configured server-side, which is what decides
-   whether checkout asks for a texted code. Read by checkout.html. */
-var FUDGIO_SMS = false;
-var _settingsWaiters = [];
-/** Runs fn once store settings have loaded (or immediately if already done). */
-function onStoreSettings(fn){ _settingsWaiters ? _settingsWaiters.push(fn) : fn(); }
-
-(function(){
-  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
-
-  function applySettings(d){
-    if(!d) return;
-    if(typeof d.deliveryFee === 'number') FUDGIO.deliveryFee = d.deliveryFee;
-    if(typeof d.freeDeliveryOver === 'number') FUDGIO.freeOver = d.freeDeliveryOver;
-    if(d.currency) FUDGIO.currency = d.currency;
-    if(d.storeOpen === false) STORE_OPEN = false;
-    FUDGIO_SMS = !!d.smsVerification;
-  }
-
-  function finish(){
-    var q=_settingsWaiters; _settingsWaiters=null;
-    if(q) q.forEach(function(fn){ try{ fn(); }catch(e){} });
-  }
-
-  ready(function(){
-    var bar=document.getElementById('sloganBar');
-    if(!bar){
-      bar=document.createElement('div');
-      bar.id='sloganBar'; bar.className='slogan-bar';
-      bar.innerHTML='<div class="wrap slogan-inner"><span class="slogan-text">'+FUDGIO_SLOGAN+'</span></div>';
-      document.body.insertBefore(bar, document.body.firstChild);
-    }
-    try{
-      var x=new XMLHttpRequest(); x.open('GET','/api/storefront',true); x.timeout=6000;
-      x.onload=function(){
-        try{
-          var d=JSON.parse(x.responseText);
-          applySettings(d);
-          if(d && d.announcement){ bar.querySelector('.slogan-text').textContent=d.announcement; }
-          if(!STORE_OPEN) showClosedNotice();
-        }catch(e){}
-        finish();
-      };
-      x.onerror=finish; x.ontimeout=finish;
-      x.send();
-    }catch(e){ finish(); }
-  });
-
-  /* When the admin closes the store, say so at the top of every page rather
-     than letting someone fill in a whole checkout and be refused at the end. */
-  function showClosedNotice(){
-    if(document.getElementById('closedNotice')) return;
-    var n=document.createElement('div');
-    n.id='closedNotice'; n.className='closed-notice';
-    n.innerHTML='<div class="wrap">😴 <strong>We’re not taking orders right now.</strong> '
-      +'You can still browse the menu — please check back soon.</div>';
-    var bar=document.getElementById('sloganBar');
-    if(bar && bar.nextSibling) document.body.insertBefore(n, bar.nextSibling);
-    else document.body.insertBefore(n, document.body.firstChild);
-  }
-})();
-
-/* ---- Entrance animations ------------------------------------------------
-   Purely decorative, and deliberately opt-in per element: `.fu-hidden` (the
-   class that sets opacity:0) is only ever added here, immediately before the
-   element is handed to the observer. Anything the observer never sees stays
-   visible.
-
-   revealIn() is re-runnable and skips elements it has already handled, so
-   code that injects markup later — the menu grid re-rendering with live
-   stock, a product page building itself — just calls it again. Doing this
-   with a plain CSS rule instead would blank out every re-rendered card,
-   because the replacements are new nodes that nothing is observing. ---- */
-var _fuIO = null, _fuSeen = 0;
-var FU_REVEAL_SELECTOR = '.section-head,.card,.feature,.step,.quote,.cta-band,.panel,.pd-art,.pd-info';
-function revealIn(root){
-  if(!_fuIO) return;                                  // disabled: nothing to do
-  var scope = root || document;
-  var targets = scope.querySelectorAll(FU_REVEAL_SELECTOR);
-  Array.prototype.forEach.call(targets, function(t){
-    if(t.getAttribute('data-fu-reveal')) return;      // already being watched
-    t.setAttribute('data-fu-reveal','1');
-    t.style.animationDelay = Math.min((_fuSeen++ % 4) * 60, 180) + 'ms';
-    t.classList.add('fu-hidden');
-    _fuIO.observe(t);
-  });
-}
-(function(){
-  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
-  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if(reduce || !('IntersectionObserver' in window)) return;   // _fuIO stays null
-  _fuIO = new IntersectionObserver(function(entries){
-    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('reveal'); _fuIO.unobserve(e.target); } });
-  },{rootMargin:'0px 0px -40px 0px',threshold:0});
-  ready(function(){ revealIn(document); });
-})();
-
-/* ---- Quick-add straight from a product card ---- */
-function quickAdd(ev, slug){
-  ev.preventDefault(); ev.stopPropagation();
-  var p=getProduct(slug); if(!p) return;
-  if(!inStock(p)){ toast(p.name+' is sold out right now'); return; }
-  var s=p.sizes[0];
-  addToCart(p, s.label, s.price, 1);
+function isPK(){ return REGION === 'PK'; }
+function setRegion(r){
+  if(r!=='PK' && r!=='INTL') return;
+  if(r==='INTL' && !FUDGIO.intlEnabled) r = 'PK';
+  if(r === REGION) return;
+  REGION = r;
+  try{ localStorage.setItem('fudgio_region', r); }catch(e){}
+  emit();
 }
 
-/* ---- Render a product card (shared by home & menu) ---- */
+/* ---------------- prices ----------------
+   A colour's dollar price is the admin's; with none set, the rupee price is
+   converted at the admin's rate and rounded up, exactly as size_usd() does. */
+function sizeUsd(s){ return (s && +s.usd > 0) ? +s.usd : Math.max(1, Math.ceil(+(s && s.price || 0) / Math.max(1, FUDGIO.usdRate))); }
+function unitPrice(p, region){ var s = sizeOf(p); return (region || REGION) === 'PK' ? +s.price : sizeUsd(s); }
+function fromPrice(region){
+  var list = visibleProducts(); if(!list.length) return 0;
+  return Math.min.apply(null, list.map(function(p){ return unitPrice(p, region); }));
+}
+function money(n, region){
+  var v = Math.round(+n || 0).toLocaleString('en-US');
+  return (region || REGION) === 'PK' ? 'Rs ' + v : '$' + v;
+}
+function inStock(p, n){ return !p || p.stock === undefined || p.stock >= (n || 1); }
+
+/* ---------------- change notifications ----------------
+   One signal for "redraw": the live catalogue landed, settings landed, the
+   currency changed or the bag changed. Every widget re-renders from state. */
+var _subs = [];
+function onChange(fn){ _subs.push(fn); }
+function emit(){ _subs.slice().forEach(function(fn){ try{ fn(); }catch(e){ if(typeof console!=='undefined') console.error(e); } }); }
+
+/* ---------------- art ---------------- */
+function artHTML(p, opts){
+  opts = opts || {};
+  if(p && p.image) return '<img src="'+esc(p.image)+'" alt="'+(opts.alt ? esc(p.name+' bandana') : '')+'" loading="'+(opts.eager?'eager':'lazy')+'" decoding="async"/>';
+  return '<div class="bn">'+bandanaSVG(p ? p.color : '', p ? p.ink : '', opts.alt && p ? { title: p.name + ' bandana' } : null)+'</div>';
+}
+function lineArt(i){
+  var p = getProduct(i.id) || { name: i.name, color: i.color, ink: i.ink, image: i.image };
+  return p.image ? '<img src="'+esc(p.image)+'" alt="" loading="lazy"/>' : '<div class="bn">'+bandanaSVG(p.color, p.ink)+'</div>';
+}
+
+/* ---------------- bag ---------------- */
+function getCart(){ try{ var c = JSON.parse(localStorage.getItem('fudgio_cart')||'[]'); return Object.prototype.toString.call(c)==='[object Array]' ? c.filter(function(i){ return i && i.id && i.qty > 0; }) : []; }catch(e){ return []; } }
+function saveCart(c){ try{ localStorage.setItem('fudgio_cart', JSON.stringify(c)); }catch(e){} emit(); }
+function cartUnits(){ return getCart().reduce(function(s,i){ return s + i.qty * (i.pieces||1); }, 0); }
+function qtyInBag(slug){ return getCart().reduce(function(s,i){ return i.id===slug ? s + i.qty : s; }, 0); }
+function lineUnit(i, region){
+  var p = getProduct(i.id);
+  if(p) return unitPrice(p, region);
+  return (region || REGION) === 'PK' ? +i.price : (+i.usd > 0 ? +i.usd : sizeUsd({ price: i.price }));
+}
+function cartSubtotal(region){ return getCart().reduce(function(s,i){ return s + lineUnit(i, region) * i.qty; }, 0); }
+/* The buy-3 deal: mirrors bundle_discount() in api/catalog.php. */
+function cartDiscount(region){
+  var pct = Math.max(0, Math.min(90, FUDGIO.bundlePct|0)), sub = cartSubtotal(region);
+  if(!pct || cartUnits() < Math.max(2, FUDGIO.bundleQty|0) || sub <= 0) return 0;
+  return Math.round(sub * pct / 100);
+}
+function cartDelivery(region){
+  var r = region || REGION, after = cartSubtotal(r) - cartDiscount(r);
+  if(r === 'PK') return (FUDGIO.freeOver > 0 && after >= FUDGIO.freeOver) ? 0 : FUDGIO.deliveryFee;
+  return (FUDGIO.intlFreeOver > 0 && after >= FUDGIO.intlFreeOver) ? 0 : FUDGIO.intlShipping;
+}
+function cartTotal(region){ return cartSubtotal(region) - cartDiscount(region) + cartDelivery(region); }
+function dealLeft(){ return Math.max(0, Math.max(2, FUDGIO.bundleQty|0) - cartUnits()); }
+function addToCart(p, qty){
+  qty = Math.max(1, qty|0);
+  var s = sizeOf(p), cart = getCart(), key = p.slug;
+  var ex = cart.filter(function(i){ return i.key===key; })[0];
+  var want = (ex ? ex.qty : 0) + qty;
+  if(p.stock !== undefined && want > p.stock){ toast(p.stock > 0 ? 'Only '+p.stock+' '+p.name+' left' : p.name+' is sold out'); return false; }
+  if(want > 20){ toast('For more than 20 of one colour, get in touch for a bulk order'); return false; }
+  if(ex) ex.qty = want;
+  else cart.push({ key:key, id:p.slug, name:p.name, color:p.color, ink:p.ink, image:p.image||'',
+                   size:s.label, pieces:1, price:+s.price, usd:sizeUsd(s), qty:qty });
+  saveCart(cart);
+  return true;
+}
+function setQty(key, qty){
+  var c = getCart(), it = c.filter(function(i){ return i.key===key; })[0]; if(!it) return;
+  var p = getProduct(it.id);
+  if(qty > it.qty && p && p.stock !== undefined && qty > p.stock){ toast('That is all the '+it.name+' we have'); return; }
+  if(qty > 20) return;
+  it.qty = qty;
+  saveCart(qty <= 0 ? c.filter(function(i){ return i.key!==key; }) : c);
+}
+function shortOf(i){ var p = getProduct(i.id); return !!(p && (p.hidden || (p.stock !== undefined && i.qty > p.stock))); }
+
+/* ---------------- words that depend on settings ---------------- */
+function dealLine(){
+  var q = Math.max(2, FUDGIO.bundleQty|0), pct = FUDGIO.bundlePct|0;
+  if(!pct) return '';
+  var n = cartUnits(), left = dealLeft();
+  if(!n) return 'Buy any '+q+', save '+pct+'%';
+  if(left) return 'Add '+left+' more to save '+pct+'%';
+  return pct+'% bundle discount unlocked';
+}
+function shipLine(region){
+  var r = region || REGION;
+  if(r === 'PK') return 'Cash on delivery across Pakistan · '+(FUDGIO.deliveryFee ? money(FUDGIO.deliveryFee,'PK')+' delivery' : 'free delivery')
+    +(FUDGIO.freeOver && FUDGIO.deliveryFee ? ', free over '+money(FUDGIO.freeOver,'PK') : '')+' · '+FUDGIO.daysPk+' days';
+  return 'Ships worldwide · '+(FUDGIO.intlShipping ? money(FUDGIO.intlShipping,'INTL')+' flat' : 'free shipping')
+    +(FUDGIO.intlFreeOver && FUDGIO.intlShipping ? ', free over '+money(FUDGIO.intlFreeOver,'INTL') : '')+' · '+FUDGIO.daysIntl+' days';
+}
+
+/* ---------------- templates (shared with the build) ---------------- */
 function productCardHTML(p){
-  var out = !inStock(p);
-  return '<a class="card'+(out?' is-sold-out':'')+'" href="'+(p.path||('/product?b='+p.slug))+'">'
-    +'<div class="card-art" style="background:'+p.gradient+'">'
-    +(p.featured?'<span class="fav">★ Signature</span>':'')
-    +(p.containsNuts?'<span class="nut-tag">⚠️ Contains nuts</span>':'')
-    + productArtHTML(p)
-    +(out?'<span class="sold-out-flag">Sold out</span>'
-         :'<button class="quick-add" onclick="quickAdd(event,\''+p.slug+'\')">+ Quick add</button>')
-    +'</div>'
-    +'<div class="card-body"><h3>'+p.name+'</h3><div class="tagline">'+p.tagline+'</div>'
-    +'<div class="card-foot"><div class="price">'+(out?'Sold out':'from '+money(fromPrice(p)))+'</div>'
-    +'<span class="card-btn">'+(out?'See details →':'Choose →')+'</span></div></div></a>';
+  var out = !inStock(p), n = HAS_DOM ? qtyInBag(p.slug) : 0;
+  var flag = out ? '<span class="flag">Sold out</span>'
+    : (p.stock !== undefined && p.stock <= 8 ? '<span class="flag pink">Only '+p.stock+' left</span>' : '');
+  var btn = out ? '<button type="button" class="add-btn" disabled>Sold out</button>'
+    : '<button type="button" class="add-btn'+(n?' in':'')+'" data-add="'+esc(p.slug)+'" aria-label="Add '+esc(p.name)+' to bag">'
+      + (n ? 'In bag ('+n+')<span class="more"> · Add another</span><span class="plus" aria-hidden="true"> +</span>' : 'Add to bag') + '</button>';
+  return '<article class="card'+(out?' is-sold-out':'')+'" data-slug="'+esc(p.slug)+'">'
+    +'<div class="tile'+(p.image?' photo':'')+'">'+artHTML(p)+flag+'</div>'
+    +'<div class="card-meta"><h3 class="card-name"><a href="'+p.path+'">'+esc(p.name)+'</a></h3>'
+    +'<span class="card-price">'+money(unitPrice(p))+'</span></div>'
+    +btn+'</article>';
 }
 
-/* Render the grid now, then re-render once real stock arrives. Each paint
-   replaces every card node, so the reveal observer has to be pointed at the
-   new ones or they would sit at opacity:0 forever. */
-function renderGrid(id){
-  var el=document.getElementById(id); if(!el) return;
-  var paint=function(){ el.innerHTML = PRODUCTS.map(productCardHTML).join(''); revealIn(el); };
-  paint();
-  loadLiveStock(paint);
+function swatchesHTML(cur){
+  return visibleProducts().map(function(p){
+    var on = p.slug === cur.slug;
+    return '<a class="sw'+(on?' on':'')+(inStock(p)?'':' out')+'" href="'+p.path+'" style="background:'+esc(p.color)+'" title="'+esc(p.name)+'" aria-label="'+esc(p.name)+(on?' (selected)':'')+'"'+(on?' aria-current="true"':'')+'></a>';
+  }).join('');
 }
 
-/* ---- Product detail page renderer -------------------------------------
-   Shared by every brownie page so each flavour can live at its own real URL
-   (/brownies/classic-chocolate) with its own title, description and schema,
-   instead of three products sharing one query-string page. ---- */
-function renderProductDetail(slug){
-  var root=document.getElementById('root');
-  if(!root) return;
-  if(!getProduct(slug)){ root.innerHTML='<div class="empty"><div class="em">🤔</div><p>Brownie not found.</p><a href="/menu" class="btn btn-primary" style="margin-top:16px">See the menu</a></div>'; return; }
+function productPageHTML(p){
+  var details = (p.details && p.details.length ? p.details : ['100% cotton','55 × 55 cm (22")','Hemmed edges','Colourfast print','Machine washable']);
+  return '<div class="pd" data-pd="'+esc(p.slug)+'">'
+    +'<div class="pd-gallery"><div class="pd-stage'+(p.image?' photo':'')+'" id="pdStage">'+artHTML(p, { alt: true, eager: true })+'</div></div>'
+    +'<div class="pd-info">'
+      +'<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/shop">Shop</a><span class="sep">/</span><span>'+esc(p.name)+'</span></nav>'
+      +'<div style="display:flex;flex-direction:column;gap:14px"><p class="eyebrow">Printed bandana · 55 cm square</p><h1 class="h1">'+esc(p.name)+'</h1></div>'
+      +'<div class="pd-price" id="pdPrice">'+money(unitPrice(p))+' <small id="pdPay">'+(isPK()?'Cash on delivery':'Paid before it ships')+'</small></div>'
+      +'<p class="pd-desc">'+esc(p.desc)+'</p>'
+      +'<div class="swatch-row"><span class="lbl">Colour <b>'+esc(p.name)+'</b></span><div class="swatches" id="pdSw">'+swatchesHTML(p)+'</div></div>'
+      +'<div class="stock-line" id="pdStock">In stock</div>'
+      +'<div class="buy"><div class="stepper" role="group" aria-label="Quantity"><button type="button" id="pdMinus" aria-label="One fewer">−</button><span id="pdQty">1</span><button type="button" id="pdPlus" aria-label="One more">+</button></div>'
+        +'<button type="button" class="btn btn-primary" id="pdAdd">Add to bag</button></div>'
+      +'<button type="button" class="btn btn-outline btn-block" id="pdBuy">Buy it now</button>'
+      +'<div class="deal-note" id="pdDeal"><span class="pct" data-pct-badge>'+(FUDGIO.bundlePct|0)+'%</span><div><b data-deal-line>Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%.</b> Mix any colours — the discount is applied automatically in your bag.</div></div>'
+      +'<div class="acc">'
+        +'<details open><summary>Details</summary><div class="a"><ul>'+details.map(function(d){ return '<li>'+esc(d)+'</li>'; }).join('')+'</ul></div></details>'
+        +'<details><summary>Delivery &amp; returns</summary><div class="a"><p data-ship-pk>Pakistan: cash on delivery, '+FUDGIO.daysPk+' working days.</p><p data-ship-intl>Worldwide: paid before it ships, '+FUDGIO.daysIntl+' working days.</p><p>Unworn and unwashed? Exchange it within 7 days. <a class="link" href="/shipping">Delivery &amp; returns</a></p></div></details>'
+        +'<details><summary>How to wear it</summary><div class="a"><ul><li><b>Head:</b> fold into a triangle, tie at the back.</li><li><b>Neck:</b> fold to a band, loose knot at the front.</li><li><b>Wrist:</b> roll thin, wrap twice, tuck the ends.</li><li><b>Bag:</b> knot round the strap or handle.</li><li><b>Back pocket:</b> let one corner hang out.</li></ul><p><a class="link" href="/how-to-wear">Step-by-step guide</a></p></div></details>'
+        +'<details><summary>Care</summary><div class="a"><p>Machine wash cold with similar colours, or hand wash. Line dry, iron warm. The first wash softens the cotton and may release a little colour, so wash it alone once.</p></div></details>'
+      +'</div>'
+    +'</div></div>';
+}
 
-  // Survives a repaint so the shopper does not lose their selection when the
-  // live catalogue lands a moment after first paint.
-  var state=null;
-
-  /* Builds the whole page from the current catalogue entry. Called once
-     immediately (so nothing is blank) and again when loadLiveStock resolves.
-     It has to redraw everything, not just the stock line: the admin can
-     change the photo, the prices and the sizes, and a page that only
-     refreshed its stock note would keep showing the old ones — and quote a
-     price the server will not honour at checkout. */
-  function paint(){
-    var p=getProduct(slug);
-    var sizes=(p.sizes && p.sizes.length) ? p.sizes : [{label:'Standard',price:p.price||0}];
-
-    // Keep the chosen size across a repaint when it still exists.
-    var keep=state && sizes.filter(function(s){ return s.label===state.size; })[0];
-    var base=keep || sizes[0];
-    state={ size:base.label, price:Number(base.price), qty:(state?state.qty:1) };
-
-    var crumb=document.getElementById('crumbName'); if(crumb) crumb.textContent=p.name;
-
-    var out=!inStock(p);
-    var note=out
-      ? '<div class="stock-note out">😔 <strong>Out of stock</strong> — this one has sold out. It will be back soon.</div>'
-      : (p.stock!==undefined && p.stock<=10
-          ? '<div class="stock-note low">🔥 <strong>Only '+p.stock+' left</strong> — baked fresh to order</div>'
-          : '<div class="stock-note in">✅ In stock &amp; baked fresh to order</div>');
-    var nut=p.containsNuts?'<div class="nut-warning">⚠️ <div><strong>Allergy warning:</strong> This brownie contains <strong>nuts</strong>. If you have a nut allergy, please do not eat it.</div></div>':'';
-
-    root.innerHTML='<div class="pd"><div class="pd-art" style="background:'+p.gradient+'">'+productArtHTML(p,'pd-img')+'</div>'
-      +'<div class="pd-info"><h1>'+p.name+'</h1><div class="tagline">'+p.tagline+'</div><div class="desc">'+p.desc+'</div>'
-      +'<div class="pd-price" id="price">'+money(state.price)+'</div>'
-      +note
-      +nut
-      +'<div class="field-label">Choose your size</div><div class="choices" id="sizes">'
-      +sizes.map(function(s){return '<div class="choice'+(s.label===state.size?' active':'')+'" data-p="'+s.price+'" data-l="'+s.label+'">'+s.label+'<small>'+money(s.price)+'</small></div>';}).join('')
-      +'</div><div class="field-label">Quantity</div>'
-      +'<div class="stepper"><button id="qm" aria-label="Decrease quantity">−</button><span id="qv">'+state.qty+'</span><button id="qp" aria-label="Increase quantity">+</button></div>'
-      +'<div class="pd-actions">'
-      +'<button class="btn btn-ghost" id="add"'+(out?' disabled':'')+'>🛒 Add to cart · <span id="bt">'+money(state.price*state.qty)+'</span></button>'
-      +'<button class="btn btn-primary" id="buy"'+(out?' disabled':'')+'>⚡ Buy now</button></div>'
-      +'<div style="margin-top:10px"><a href="/cart" style="color:var(--orange);font-weight:700;font-size:.9rem">View cart →</a></div>'
-      +'<div class="allergen-box"><h4>🥜 Allergen information</h4><div class="allergen-list">'+(p.allergens||[]).map(function(a){return '<span>'+a+'</span>';}).join('')+'</div></div>'
-      +'<div class="cod" style="margin-top:16px">💵 Cash on Delivery only — pay when it arrives</div>'
-      +'<a href="/menu" class="back-link">← Back to menu</a>'
-      +'</div></div>';
-
-    // The sticky mobile bar lives on <body>, so reuse it instead of appending
-    // a second one on every repaint.
-    var bb=document.querySelector('.buy-bar');
-    if(!bb){
-      bb=document.createElement('div'); bb.className='buy-bar';
-      bb.innerHTML='<span class="bb-price" id="bbPrice"></span>'
-        +'<button class="btn btn-ghost" id="bbAdd">Add</button>'
-        +'<button class="btn btn-primary" id="bbBuy">⚡ Buy now</button>';
-      document.body.appendChild(bb);
-      document.body.classList.add('has-buy-bar');
-    }
-
-    function sync(){
-      document.getElementById('bt').textContent=money(state.price*state.qty);
-      document.getElementById('price').textContent=money(state.price);
-      document.getElementById('qv').textContent=state.qty;
-      var e=document.getElementById('bbPrice'); if(e) e.textContent=money(state.price*state.qty);
-    }
-    var choices=root.querySelectorAll('#sizes .choice');
-    Array.prototype.forEach.call(choices,function(el){
-      el.onclick=function(){
-        Array.prototype.forEach.call(choices,function(e){e.classList.remove('active');});
-        el.classList.add('active');
-        state.size=el.getAttribute('data-l'); state.price=Number(el.getAttribute('data-p')); sync();
-      };
-    });
-    document.getElementById('qm').onclick=function(){ state.qty=Math.max(1,state.qty-1); sync(); };
-    document.getElementById('qp').onclick=function(){ state.qty=Math.min(20,state.qty+1); sync(); };
-
-    var add=function(){ addToCart(getProduct(slug),state.size,state.price,state.qty); };
-    var buy=function(){ add(); location.href='/checkout'; };
-    document.getElementById('add').onclick=add;
-    document.getElementById('buy').onclick=buy;
-    var bbAdd=document.getElementById('bbAdd'), bbBuy=document.getElementById('bbBuy');
-    bbAdd.onclick=add; bbBuy.onclick=buy;
-    bbAdd.disabled=out; bbBuy.disabled=out;
-    if(out){ document.getElementById('add').innerHTML='Out of stock'; document.getElementById('buy').innerHTML='Out of stock'; }
-
-    sync();
-    revealIn(root);
+function bagLinesHTML(){
+  return getCart().map(function(i){
+    var p = getProduct(i.id), short = shortOf(i), unit = lineUnit(i);
+    var href = p ? p.path : '/shop';
+    var note = p && p.hidden ? 'No longer available — please remove'
+      : (short ? (p.stock > 0 ? 'Only '+p.stock+' left' : 'Sold out — please remove') : (i.size || '55 cm square')+' · '+money(unit));
+    return '<div class="bline'+(short?' short':'')+'"><a class="thumb'+(p&&p.image?' photo':'')+'" href="'+href+'" tabindex="-1" aria-hidden="true">'+lineArt(i)+'</a>'
+      +'<div><h4><a href="'+href+'">'+esc(p ? p.name : i.name)+'</a></h4><div class="meta">'+esc(note)+'</div>'
+      +'<div class="stepper" role="group" aria-label="Quantity of '+esc(i.name)+'"><button type="button" data-dec="'+esc(i.key)+'" aria-label="One fewer">−</button><span>'+i.qty+'</span><button type="button" data-inc="'+esc(i.key)+'" aria-label="One more">+</button></div></div>'
+      +'<div class="right"><span class="price">'+money(unit*i.qty)+'</span><button type="button" class="rm" data-rm="'+esc(i.key)+'">Remove</button></div></div>';
+  }).join('');
+}
+function totalsHTML(){
+  var sub = cartSubtotal(), disc = cartDiscount(), ship = cartDelivery();
+  var html = '<div class="srow"><span>Subtotal</span><b>'+money(sub)+'</b></div>';
+  if(disc) html += '<div class="srow save"><span>Bundle deal ('+FUDGIO.bundlePct+'% off)</span><b>−'+money(disc)+'</b></div>';
+  html += '<div class="srow"><span>'+(isPK()?'Delivery in Pakistan':'Shipping worldwide')+'</span><b>'+(ship===0?'Free':money(ship))+'</b></div>';
+  html += '<div class="srow tot"><span>Total</span><b>'+money(sub-disc+ship)+'</b></div>';
+  return html;
+}
+function nudgeText(){
+  var after = cartSubtotal() - cartDiscount();
+  if(dealLeft() && FUDGIO.bundlePct) return dealLine()+'. Mix any colours.';
+  if(isPK() && FUDGIO.deliveryFee && FUDGIO.freeOver > after) return money(FUDGIO.freeOver - after)+' away from free delivery.';
+  if(!isPK() && FUDGIO.intlShipping && FUDGIO.intlFreeOver > after) return money(FUDGIO.intlFreeOver - after)+' away from free shipping.';
+  return '';
+}
+function dealMeterHTML(){
+  var q = Math.max(2, FUDGIO.bundleQty|0), cart = getCart(), pips = '', i, k = 0;
+  var swatch = [];
+  cart.forEach(function(it){ for(var j=0;j<it.qty && swatch.length<q;j++) swatch.push(it); });
+  for(i=0;i<q;i++){
+    var it = swatch[i];
+    pips += it ? '<span class="pip on">'+lineArt(it)+'</span>' : '<span class="pip"></span>';
+    if(it) k++;
   }
-
-  paint();
-  loadLiveStock(paint);
-  updateCount();
+  return '<div class="pips" aria-hidden="true">'+pips+'</div><div class="txt">'+esc(dealLine())+'<small>'
+    +(dealLeft() ? 'Any colours. Taken off automatically in your bag.' : 'Applied to everything in your bag.')+'</small></div>'
+    +'<a class="btn btn-dark btn-sm" href="/cart" data-open-bag>View bag</a>';
 }
+
+/* ---------------- everything below needs a page ---------------- */
+var _tt;
+function toast(msg, action){
+  if(!HAS_DOM) return;
+  var t = document.getElementById('toast');
+  if(!t){ t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role','status'); t.setAttribute('aria-live','polite'); document.body.appendChild(t); }
+  t.innerHTML = '<span>'+esc(msg)+'</span>' + (action ? '<button type="button">'+esc(action.label)+'</button>' : '');
+  if(action) t.querySelector('button').onclick = function(){ t.classList.remove('show'); action.fn(); };
+  t.classList.add('show'); clearTimeout(_tt); _tt = setTimeout(function(){ t.classList.remove('show'); }, 3200);
+}
+function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test((e||'').trim()); }
+function validPhone(p){ var d=(p||'').replace(/\D/g,''); return d.length>=7 && d.length<=15; }
+function api(method, url, data, cb){
+  var x = new XMLHttpRequest();
+  x.open(method, url, true);
+  x.setRequestHeader('Content-Type','application/json');
+  x.timeout = 20000;
+  x.onload = function(){ var d = {}; try{ d = JSON.parse(x.responseText)||{}; }catch(e){} cb(x.status>=200 && x.status<300, d); };
+  x.onerror = x.ontimeout = function(){ cb(false, { error: 'Network error. Please check your connection and try again.' }); };
+  x.send(data ? JSON.stringify(data) : null);
+}
+
+/* ---- bag drawer ---- */
+var _lastFocus = null;
+function openBag(){
+  if(!HAS_DOM) return;
+  var p = location.pathname.replace(/\/$/,'');
+  if(p === '/cart' || p === '/checkout'){ location.href = '/cart'; return; }
+  buildDrawer(); renderDrawer();
+  _lastFocus = document.activeElement;
+  document.body.classList.add('drawer-open','lock');
+  document.getElementById('drawer').setAttribute('aria-hidden','false');
+  setTimeout(function(){ var c = document.querySelector('#drawer .x-btn'); if(c) c.focus(); }, 60);
+}
+function closeBag(){
+  document.body.classList.remove('drawer-open','lock');
+  var d = document.getElementById('drawer'); if(d) d.setAttribute('aria-hidden','true');
+  if(_lastFocus && _lastFocus.focus) _lastFocus.focus();
+}
+function buildDrawer(){
+  if(document.getElementById('drawer')) return;
+  var bg = document.createElement('div'); bg.className = 'drawer-bg'; bg.onclick = closeBag;
+  var d = document.createElement('aside');
+  d.id = 'drawer'; d.className = 'drawer'; d.setAttribute('role','dialog'); d.setAttribute('aria-modal','true'); d.setAttribute('aria-labelledby','dwTitle'); d.setAttribute('aria-hidden','true');
+  d.innerHTML = '<div class="drawer-head"><h2 id="dwTitle">Your bag</h2><button type="button" class="x-btn" aria-label="Close bag">×</button></div>'
+    +'<div class="drawer-deal" id="dwDeal"></div><div class="drawer-body" id="dwBody"></div><div class="drawer-foot" id="dwFoot"></div>';
+  d.querySelector('.x-btn').onclick = closeBag;
+  bindLineButtons(d);
+  document.body.appendChild(bg); document.body.appendChild(d);
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && document.body.classList.contains('drawer-open')) closeBag(); });
+}
+function renderDrawer(){
+  var d = document.getElementById('drawer'); if(!d) return;
+  var cart = getCart(), n = cartUnits();
+  document.getElementById('dwTitle').innerHTML = 'Your bag <span class="mono" style="font-weight:400;font-size:1rem;color:var(--muted)">('+n+')</span>';
+  var deal = document.getElementById('dwDeal');
+  if(!cart.length || !FUDGIO.bundlePct){ deal.style.display = 'none'; }
+  else {
+    var q = Math.max(2, FUDGIO.bundleQty|0);
+    deal.style.display = '';
+    deal.innerHTML = '<b>'+esc(dealLine())+'</b><div class="bar"><i style="width:'+Math.min(100, n/q*100)+'%"></i></div>';
+  }
+  if(!cart.length){
+    document.getElementById('dwBody').innerHTML = '<div class="drawer-empty"><div class="bn">'+bandanaSVG('#FF6A13','#FFFFFF')+'</div><p>Your bag is empty.</p><a class="btn btn-dark btn-sm" href="/shop">Shop all colours</a></div>';
+    document.getElementById('dwFoot').innerHTML = '';
+    return;
+  }
+  document.getElementById('dwBody').innerHTML = bagLinesHTML();
+  var blocked = cart.some(shortOf), nudge = nudgeText();
+  document.getElementById('dwFoot').innerHTML = totalsHTML()
+    + (nudge ? '<p class="pay-note" style="color:var(--pink-2)">'+esc(nudge)+'</p>' : '')
+    + (blocked ? '<button class="btn btn-primary btn-block" disabled>Checkout</button>'
+               : '<a class="btn btn-primary btn-block" href="/checkout">Checkout <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>')
+    + '<p class="pay-note">'+(isPK() ? 'Cash on delivery · pay when it arrives' : 'Prices in USD · paid before it ships')+'</p>';
+}
+function bindLineButtons(root){
+  root.addEventListener('click', function(e){
+    var b = e.target.closest('[data-inc],[data-dec],[data-rm]'); if(!b) return;
+    var c = getCart(), key = b.getAttribute('data-inc') || b.getAttribute('data-dec') || b.getAttribute('data-rm');
+    var it = c.filter(function(i){ return i.key === key; })[0]; if(!it) return;
+    if(b.hasAttribute('data-rm')){ setQty(key, 0); toast(it.name+' removed'); }
+    else setQty(key, it.qty + (b.hasAttribute('data-inc') ? 1 : -1));
+  });
+}
+
+/* ---- the live catalogue and settings ---- */
+function mergeLive(rows){
+  if(Object.prototype.toString.call(rows) !== '[object Array]' || !rows.length) return;
+  var seen = {};
+  rows.forEach(function(r){
+    if(!r || !r.slug) return;
+    seen[r.slug] = true;
+    var p = getProduct(r.slug);
+    if(!p){ p = makeProduct(r, false); PRODUCTS.push(p); }   // a colour added in the admin
+    p.hidden = r.active === false;
+    if(r.name) p.name = r.name;
+    if(r.tagline !== undefined) p.tagline = r.tagline;
+    if(r.description) p.desc = r.description;
+    if(r.color) p.color = r.color;
+    if(r.ink) p.ink = r.ink;
+    if(r.sizes && r.sizes.length) p.sizes = r.sizes;
+    if(r.details && r.details.length) p.details = r.details;
+    if(typeof r.sort === 'number') p.sort = r.sort;
+    p.image = r.imageUrl || '';
+    if(r.stock !== undefined && r.stock !== null && !isNaN(+r.stock)) p.stock = +r.stock;
+  });
+  // A colour the shop no longer lists is hidden from the grid.
+  PRODUCTS.forEach(function(p){ if(!seen[p.slug]) p.hidden = true; });
+}
+function applySettings(d){
+  if(!d) return;
+  var n = function(v, def){ return typeof v === 'number' && !isNaN(v) ? v : def; };
+  FUDGIO.deliveryFee  = n(d.deliveryFee, FUDGIO.deliveryFee);
+  FUDGIO.freeOver     = n(d.freeDeliveryOver, FUDGIO.freeOver);
+  FUDGIO.intlShipping = n(d.intlShipping, FUDGIO.intlShipping);
+  FUDGIO.intlFreeOver = n(d.intlFreeOver, FUDGIO.intlFreeOver);
+  FUDGIO.usdRate      = Math.max(1, n(d.usdRate, FUDGIO.usdRate));
+  FUDGIO.bundleQty    = n(d.bundleQty, FUDGIO.bundleQty);
+  FUDGIO.bundlePct    = n(d.bundlePct, FUDGIO.bundlePct);
+  ['daysPk','daysIntl','instagram','whatsapp','announcement','intlPaymentLink'].forEach(function(k){ if(typeof d[k] === 'string' && (d[k] || k==='announcement' || k==='instagram' || k==='whatsapp' || k==='intlPaymentLink')) FUDGIO[k] = d[k]; });
+  if(typeof d.intlEnabled === 'boolean') FUDGIO.intlEnabled = d.intlEnabled;
+  FUDGIO.storeOpen = d.storeOpen !== false;
+  FUDGIO.sms = !!d.smsVerification;
+  if(!FUDGIO.intlEnabled && REGION === 'INTL'){ REGION = 'PK'; }
+}
+var _ready = { catalog: false, settings: false };
+function whenLive(fn){ if(_ready.catalog && _ready.settings) fn(); else onChange(function once(){ if(_ready.catalog && _ready.settings && !once.done){ once.done = true; fn(); } }); }
+
+/* ---- page widgets: every one redraws from state on emit() ---- */
+function paintHeader(){
+  var c = document.getElementById('cartCount');
+  if(c){ var n = cartUnits(); if(c.textContent !== String(n)){ c.textContent = n; c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); } c.classList.toggle('has', n > 0); }
+  var b = document.getElementById('curBtn');
+  if(b){ b.hidden = !FUDGIO.intlEnabled; b.textContent = isPK() ? 'PKR ₨' : 'USD $'; b.title = isPK() ? 'Prices in rupees. Switch to US dollars' : 'Prices in US dollars. Switch to rupees'; }
+  var a = document.getElementById('announce');
+  if(a){
+    var txt = FUDGIO.announcement || (isPK()
+      ? (FUDGIO.deliveryFee && FUDGIO.freeOver ? 'Free delivery in Pakistan over '+money(FUDGIO.freeOver,'PK') : 'Free delivery across Pakistan')+' · Cash on delivery · Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%'
+      : 'Shipping worldwide for '+money(FUDGIO.intlShipping,'INTL')+' flat · Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%');
+    if(!FUDGIO.bundlePct && !FUDGIO.announcement) txt = txt.replace(/ · Buy any .*$/, '');
+    a.textContent = txt;
+  }
+  var cl = document.getElementById('closedNote');
+  if(!FUDGIO.storeOpen && !cl && a){ cl = document.createElement('div'); cl.id='closedNote'; cl.className='closed-note'; cl.textContent='We are not taking orders right now — browse away, and check back soon.'; a.parentNode.insertBefore(cl, a.nextSibling); }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-ig]'), function(el){
+    if(FUDGIO.instagram){ el.hidden = false; el.href = 'https://instagram.com/'+encodeURIComponent(FUDGIO.instagram); if(el.hasAttribute('data-ig-handle')) el.textContent = '@'+FUDGIO.instagram; } else el.hidden = true;
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-wa]'), function(el){
+    if(FUDGIO.whatsapp){ el.hidden = false; el.href = 'https://wa.me/'+FUDGIO.whatsapp; } else el.hidden = true;
+  });
+}
+function paintBits(){
+  var set = function(sel, fn){ Array.prototype.forEach.call(document.querySelectorAll(sel), fn); };
+  set('[data-from]', function(el){ el.textContent = 'From '+money(fromPrice()); });
+  set('[data-price-one]', function(el){ el.textContent = money(fromPrice()); });
+  set('[data-pct]', function(el){ el.textContent = FUDGIO.bundlePct; });
+  set('[data-qty]', function(el){ el.textContent = FUDGIO.bundleQty; });
+  set('[data-days]', function(el){ el.textContent = isPK() ? FUDGIO.daysPk : FUDGIO.daysIntl; });
+  set('[data-days-pk]', function(el){ el.textContent = FUDGIO.daysPk; });
+  set('[data-days-intl]', function(el){ el.textContent = FUDGIO.daysIntl; });
+  set('[data-ship]', function(el){ el.textContent = shipLine(); });
+  set('[data-s]', function(el){
+    var k = el.getAttribute('data-s'), v = FUDGIO[k];
+    if(k==='deliveryFee'||k==='freeOver') v = money(v,'PK');
+    if(k==='intlShipping'||k==='intlFreeOver') v = money(v,'INTL');
+    el.textContent = v;
+  });
+  set('[data-only]', function(el){ el.hidden = el.getAttribute('data-only') !== REGION; });
+  set('[data-bundle-sum]', function(el){
+    var q = Math.max(2, FUDGIO.bundleQty|0), one = fromPrice(), full = one*q, off = Math.round(full*FUDGIO.bundlePct/100);
+    el.innerHTML = q+' × '+money(one)+' = <s>'+money(full)+'</s> '+money(full-off);
+  });
+  set('[data-trio]', function(el){
+    var v = visibleProducts(), pick = [v[0], v[2], v[4]].filter(Boolean);
+    el.innerHTML = pick.map(function(p){ return '<div class="bn">'+bandanaSVG(p.color, p.ink)+'</div>'; }).join('');
+  });
+  set('[data-sticker]', function(el){ var t = 'Buy any '+FUDGIO.bundleQty+' · save '+FUDGIO.bundlePct+'% · '; el.textContent = t+t; });
+  set('[data-sticker-wrap]', function(el){ el.hidden = !FUDGIO.bundlePct; });
+  set('[data-deal-meter]', function(el){
+    var n = cartUnits();
+    el.hidden = !n || !FUDGIO.bundlePct;
+    if(!el.hidden) el.innerHTML = dealMeterHTML();
+  });
+  set('[data-grid]', function(el){
+    var ex = el.getAttribute('data-exclude'), lim = +el.getAttribute('data-limit') || 0;
+    var list = visibleProducts().filter(function(p){ return p.slug !== ex; });
+    if(lim) list = list.slice(0, lim);
+    el.innerHTML = list.map(productCardHTML).join('');
+    revealIn(el);
+  });
+  if(document.getElementById('drawer')) renderDrawer();
+}
+
+/* ---- the product page ---- */
+var PD = null;
+function initProduct(slug){
+  var root = document.querySelector('[data-pd-root]'); if(!root) return;
+  PD = { slug: slug, qty: 1 };
+  if(!root.querySelector('.pd') && getProduct(slug)) root.innerHTML = productPageHTML(getProduct(slug));
+  root.addEventListener('click', function(e){
+    var t = e.target.closest('button'); if(!t || !PD) return;
+    var p = getProduct(PD.slug); if(!p) return;
+    if(t.id === 'pdMinus'){ PD.qty = Math.max(1, PD.qty - 1); paintProduct(); }
+    if(t.id === 'pdPlus'){ var max = Math.min(20, p.stock === undefined ? 20 : p.stock); if(PD.qty >= max){ toast('That is all we have of this colour'); return; } PD.qty++; paintProduct(); }
+    if(t.id === 'pdAdd'){ if(addToCart(p, PD.qty)){ PD.qty = 1; openBag(); } }
+    if(t.id === 'pdBuy'){ if(addToCart(p, PD.qty)) location.href = '/checkout'; }
+  });
+  var bar = document.createElement('div');
+  bar.className = 'buy-bar'; bar.id = 'buyBar';
+  bar.innerHTML = '<div class="bb-name"><b></b><span></span></div><button type="button" class="btn btn-primary">Add to bag</button>';
+  bar.querySelector('button').onclick = function(){ var p = getProduct(PD.slug); if(p && addToCart(p, 1)) openBag(); };
+  document.body.appendChild(bar); document.body.classList.add('has-buy-bar');
+  if('IntersectionObserver' in window){
+    new IntersectionObserver(function(es){ es.forEach(function(e){ bar.classList.toggle('show', !e.isIntersecting && e.boundingClientRect.top < 0); }); }).observe(document.getElementById('pdAdd') || root);
+  }
+  onChange(paintProduct);
+  paintProduct();
+}
+function paintProduct(){
+  var root = document.querySelector('[data-pd-root]'); if(!root || !PD) return;
+  var p = getProduct(PD.slug);
+  if(!p || (p.hidden && _ready.catalog)){
+    if(_ready.catalog) root.innerHTML = '<div class="empty" style="padding:96px 0"><h1 class="h2">This colour is not available</h1><p class="lede">It may have sold out for good. Every other colour is in the shop.</p><a class="btn btn-primary" href="/shop">Shop all colours</a></div>';
+    return;
+  }
+  if(!root.querySelector('.pd')) root.innerHTML = productPageHTML(p);
+  var $ = function(id){ return document.getElementById(id); };
+  var stage = $('pdStage');
+  var hasPhoto = !!p.image, showsPhoto = !!stage.querySelector('img');
+  if(hasPhoto !== showsPhoto || (hasPhoto && stage.querySelector('img').getAttribute('src') !== p.image)){ stage.className = 'pd-stage'+(hasPhoto?' photo':''); stage.innerHTML = artHTML(p, { alt: true, eager: true }); }
+  var unit = unitPrice(p), out = !inStock(p);
+  $('pdPrice').innerHTML = money(unit)+' <small>'+(isPK() ? 'Cash on delivery' : 'Paid before it ships · USD')+'</small>';
+  $('pdSw').innerHTML = swatchesHTML(p);
+  var st = $('pdStock');
+  st.className = 'stock-line'+(out ? ' out' : (p.stock !== undefined && p.stock <= 8 ? ' low' : ''));
+  st.textContent = out ? 'Sold out — back soon' : (p.stock !== undefined && p.stock <= 8 ? 'Only '+p.stock+' left' : 'In stock')
+    + (out ? '' : ' · '+(isPK() ? 'delivered in '+FUDGIO.daysPk+' days across Pakistan' : 'ships worldwide in '+FUDGIO.daysIntl+' days'));
+  $('pdQty').textContent = PD.qty;
+  $('pdAdd').disabled = out; $('pdBuy').disabled = out;
+  $('pdAdd').textContent = out ? 'Sold out' : 'Add to bag — '+money(unit*PD.qty);
+  var dl = root.querySelector('[data-deal-line]');
+  var deal = $('pdDeal');
+  deal.hidden = !FUDGIO.bundlePct;
+  if(dl){
+    var inBag = qtyInBag(p.slug), left = dealLeft();
+    dl.textContent = !cartUnits() ? 'Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%.' : (left ? 'Add '+left+' more to save '+FUDGIO.bundlePct+'%.' : FUDGIO.bundlePct+'% off is unlocked.');
+    root.querySelector('[data-pct-badge]').textContent = FUDGIO.bundlePct+'%';
+  }
+  var sp = root.querySelector('[data-ship-pk]'), si = root.querySelector('[data-ship-intl]');
+  if(sp) sp.textContent = 'Pakistan: cash on delivery, '+(FUDGIO.deliveryFee ? money(FUDGIO.deliveryFee,'PK')+(FUDGIO.freeOver ? ' (free over '+money(FUDGIO.freeOver,'PK')+')' : '') : 'free')+', '+FUDGIO.daysPk+' working days.';
+  if(si) si.textContent = 'Worldwide: '+(FUDGIO.intlShipping ? money(FUDGIO.intlShipping,'INTL')+' flat' : 'free shipping')+', paid before it ships, '+FUDGIO.daysIntl+' working days.';
+  var bar = $('buyBar');
+  if(bar){ bar.querySelector('b').textContent = p.name; bar.querySelector('span').textContent = money(unit); bar.querySelector('button').disabled = out; }
+}
+
+/* ---- entrance animations: opt-in per element, re-runnable ---- */
+var _io = null, _seen = 0;
+var REVEAL = '.card,.way,.perk,.box,.reveal-me,.faq details';
+function revealIn(root){
+  if(!_io) return;
+  Array.prototype.forEach.call((root || document).querySelectorAll(REVEAL), function(t){
+    if(t.getAttribute('data-rv')) return;
+    t.setAttribute('data-rv','1');
+    var r = t.getBoundingClientRect();
+    if(r.top < innerHeight && r.bottom > 0) return;           // already on screen: leave it be
+    t.style.animationDelay = ((_seen++ % 4) * 70) + 'ms';
+    t.classList.add('fu-hidden'); _io.observe(t);
+  });
+}
+
+if(HAS_DOM) (function(){
+  function ready(fn){ if(document.readyState !== 'loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(!reduce && 'IntersectionObserver' in window){
+    _io = new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('reveal'); _io.unobserve(e.target); } }); }, { rootMargin: '0px 0px -40px 0px' });
+  }
+  onChange(paintHeader);
+  onChange(paintBits);
+  // Another tab changed the bag.
+  window.addEventListener('storage', function(e){ if(e.key === 'fudgio_cart' || e.key === 'fudgio_region') emit(); });
+
+  ready(function(){
+    // header: menu, currency, bag
+    var hdr = document.querySelector('.site-header');
+    var mb = document.getElementById('menuBtn');
+    if(mb) mb.onclick = function(){ var o = document.body.classList.toggle('menu-open'); mb.setAttribute('aria-expanded', o); document.body.classList.toggle('lock', o); };
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-links a'), function(a){ a.addEventListener('click', function(){ document.body.classList.remove('menu-open','lock'); }); });
+    var cb = document.getElementById('curBtn');
+    if(cb) cb.onclick = function(){ setRegion(isPK() ? 'INTL' : 'PK'); toast(isPK() ? 'Prices in rupees · cash on delivery in Pakistan' : 'Prices in US dollars · shipping worldwide'); };
+    document.addEventListener('click', function(e){
+      var b = e.target.closest('#bagBtn,[data-open-bag]');
+      if(b){ var p = location.pathname.replace(/\/$/,''); if(p !== '/cart' && p !== '/checkout'){ e.preventDefault(); openBag(); } return; }
+      var add = e.target.closest('[data-add]');
+      if(add){
+        var pr = getProduct(add.getAttribute('data-add'));
+        if(pr && addToCart(pr, 1)){
+          var left = dealLeft();
+          toast(pr.name+' added'+(FUDGIO.bundlePct ? (left ? ' — '+left+' more for '+FUDGIO.bundlePct+'% off' : ' — '+FUDGIO.bundlePct+'% off unlocked') : ''), { label: 'View bag', fn: openBag });
+        }
+      }
+    });
+    if(hdr){ var onScroll = function(){ hdr.classList.toggle('scrolled', scrollY > 8); }; addEventListener('scroll', onScroll, { passive: true }); onScroll(); }
+    var here = location.pathname.replace(/\/$/,'') || '/';
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-link'), function(a){
+      var h = (a.getAttribute('href')||'').replace(/\/$/,'');
+      if(h === here || (h === '/shop' && (here.indexOf('/bandanas/') === 0 || here === '/bandana'))) a.classList.add('on');
+    });
+    var yr = document.getElementById('yr'); if(yr) yr.textContent = new Date().getFullYear();
+
+    // the hero bandanas lean towards the pointer
+    var art = document.querySelector('.hero-art');
+    if(art && !reduce && matchMedia('(hover:hover)').matches){
+      art.addEventListener('pointermove', function(e){
+        var r = art.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+        Array.prototype.forEach.call(art.querySelectorAll('.float .bn'), function(b, i){ var k = (i + 1) * 9; b.style.setProperty('--px', (x * k)+'px'); b.style.setProperty('--py', (y * k)+'px'); });
+      });
+      art.addEventListener('pointerleave', function(){ Array.prototype.forEach.call(art.querySelectorAll('.float .bn'), function(b){ b.style.setProperty('--px','0px'); b.style.setProperty('--py','0px'); }); });
+    }
+
+    // newsletter
+    Array.prototype.forEach.call(document.querySelectorAll('form[data-news]'), function(f){
+      f.addEventListener('submit', function(e){
+        e.preventDefault();
+        var inp = f.querySelector('input[type=email]'), msg = f.querySelector('.news-msg'), btn = f.querySelector('button');
+        if(!validEmail(inp.value)){ msg.className = 'news-msg bad'; msg.textContent = 'Please enter a valid email address.'; inp.focus(); return; }
+        btn.disabled = true;
+        api('POST', '/api/subscribe', { email: inp.value.trim(), source: location.pathname, website: (f.querySelector('.hp')||{}).value || '' }, function(ok, d){
+          btn.disabled = false;
+          msg.className = 'news-msg ' + (ok ? 'ok' : 'bad');
+          msg.textContent = ok ? 'You’re on the list. We’ll email you when new colours drop.' : (d.error || 'That did not work. Please try again.');
+          if(ok) inp.value = '';
+        });
+      });
+    });
+
+    var pd = document.querySelector('[data-pd-root]');
+    if(pd){
+      var slug = pd.getAttribute('data-pd-root') || new URLSearchParams(location.search).get('c') || '';
+      initProduct(slug);
+    }
+    emit();
+    revealIn(document);
+
+    // live data
+    api('GET', '/api/products', null, function(ok, rows){ if(ok) mergeLive(rows); _ready.catalog = true; emit(); });
+    api('GET', '/api/storefront', null, function(ok, d){ if(ok) applySettings(d); _ready.settings = true; emit(); });
+    try{
+      var vid = localStorage.getItem('fud_vid');
+      if(!vid){ vid = Date.now().toString(36) + Math.random().toString(36).slice(2,8); localStorage.setItem('fud_vid', vid); }
+      api('POST', '/api/visit', { page: location.pathname || '/', visitor: vid }, function(){});
+    }catch(e){}
+  });
+})();

@@ -76,7 +76,7 @@ try {
     }
     out($r);
   }
-  if ($path==='config') out(['statuses'=>['Pending','Confirmed','Baking','Out for Delivery','Delivered','Cancelled'],'currency'=>cfg()['currency']]);
+  if ($path==='config') out(['statuses'=>order_statuses(),'currency'=>cfg()['currency']]);
 
   // Public: everything the storefront needs to render correct totals.
   // The delivery fee and free-delivery threshold live in the admin, and
@@ -91,9 +91,54 @@ try {
       'deliveryFee'      => (int)($s['deliveryFee'] ?? cfg()['deliveryFee']),
       'freeDeliveryOver' => (int)($s['freeDeliveryOver'] ?? cfg()['freeDeliveryOver']),
       'currency'         => cfg()['currency'],
-      // Tells the checkout whether to show the SMS verification step.
+      // Tells the checkout whether to show the SMS verification step. It only
+      // ever applies to Pakistani numbers: SMS guards cash on delivery, and an
+      // international order is paid before it ships.
       'smsVerification'  => sms_ready(),
+      // International shipping, all in USD.
+      'intlEnabled'      => (bool)($s['intlEnabled'] ?? true),
+      'intlShipping'     => (int)($s['intlShipping'] ?? 12),
+      'intlFreeOver'     => (int)($s['intlFreeOver'] ?? 0),
+      'usdRate'          => max(1, (int)($s['usdRate'] ?? 280)),
+      'intlPaymentLink'  => (string)($s['intlPaymentLink'] ?? ''),
+      // The buy-3 deal, delivery times and social links shown across the site.
+      'bundleQty'        => (int)($s['bundleQty'] ?? 3),
+      'bundlePct'        => (int)($s['bundlePct'] ?? 15),
+      'daysPk'           => (string)($s['daysPk'] ?? ''),
+      'daysIntl'         => (string)($s['daysIntl'] ?? ''),
+      'instagram'        => (string)($s['instagram'] ?? ''),
+      'whatsapp'         => (string)($s['whatsapp'] ?? ''),
     ]);
+  }
+
+  // Public: "get new colours first".
+  if ($path==='subscribe' && $method==='POST') {
+    throttle('subscribe', 20, 3600000);
+    $b = body(4096);
+    if (!empty($b['website'])) out(['ok'=>true]);       // honeypot: a bot filled the hidden field
+    $r = subscriber_add((string)($b['email'] ?? ''), (string)($b['source'] ?? 'site'));
+    isset($r['error']) ? err($r['error']) : out(['ok'=>true]);
+  }
+
+  // Public: the contact form. Stored for the admin inbox, then emailed to
+  // the shop after the response so the sender is not kept waiting on SMTP.
+  if ($path==='contact' && $method==='POST') {
+    throttle('contact', 6, 3600000);
+    $b = body(16384);
+    if (!empty($b['website'])) out(['ok'=>true]);       // honeypot
+    $r = message_create($b);
+    if (isset($r['error'])) err($r['error']);
+    $payload = json_encode(['ok'=>true]);
+    http_response_code(201);
+    ignore_user_abort(true);
+    header('Content-Length: ' . strlen($payload));
+    header('Connection: close');
+    echo $payload;
+    if (function_exists('fastcgi_finish_request'))      fastcgi_finish_request();
+    elseif (function_exists('litespeed_finish_request')) litespeed_finish_request();
+    else { while (ob_get_level() > 0) @ob_end_flush(); @flush(); }
+    notify_message($r['message']);
+    exit;
   }
 
   // Public: record a page visit (fire-and-forget from the storefront).
@@ -254,7 +299,11 @@ try {
       // code, which is the stronger check and also gives a reachable number for
       // a COD delivery. Without one, fall back to the image CAPTCHA so the shop
       // still takes orders rather than refusing everyone.
-      if (sms_ready()) {
+      // SMS only applies inside Pakistan. It exists because cash on delivery
+      // lets someone order without paying; an international order is paid
+      // before it ships, so the CAPTCHA alone is enough there.
+      $domestic = is_domestic((string)($cust['country'] ?? 'PK') ?: 'PK');
+      if ($domestic && sms_ready()) {
         if (!phone_is_verified((string)($cust['phone'] ?? '')))
           err('Please verify your phone number before placing the order.');
       } else {
@@ -265,7 +314,7 @@ try {
       if (isset($r['error'])) err($r['error']);
       // Single-use: the same confirmed number cannot be replayed for a second
       // order without asking for a new code.
-      if (sms_ready()) phone_otp_consume((string)($cust['phone'] ?? ''));
+      if ($domestic && sms_ready()) phone_otp_consume((string)($cust['phone'] ?? ''));
 
       // Answer the customer first, then send the owner's alert email, so the
       // shopper is never left watching a spinner while we talk to an SMTP
@@ -341,6 +390,15 @@ try {
   if ($path==='analytics'){ require_admin(); out(analytics()); }
   if ($path==='users'){ require_admin(); out(users_all()); }
   if ($path==='settings'){ require_admin(); if($method==='GET') out(settings_get()); out(settings_set(body())); }
+  if ($path==='subscribers'){ require_admin(); out(subscribers_all()); }
+  if ($seg[0]==='subscribers' && count($seg)===2 && $method==='DELETE'){ require_admin(); out(['ok'=>subscriber_delete(urldecode($seg[1]))]); }
+  if ($path==='export/subscribers'){ require_admin(); header('Content-Type: text/csv'); header('Content-Disposition: attachment; filename="fudgio-subscribers.csv"'); echo subscribers_csv(); exit; }
+  if ($path==='messages'){ require_admin(); out(messages_all()); }
+  if ($seg[0]==='messages' && count($seg)===2){
+    require_admin();
+    if ($method==='PATCH') out(['ok'=>message_set_status($seg[1], (string)(body()['status'] ?? ''))]);
+    if ($method==='DELETE') out(['ok'=>message_delete($seg[1])]);
+  }
   if ($path==='export/orders'){ require_admin(); header('Content-Type: text/csv'); header('Content-Disposition: attachment; filename="fudgio-orders.csv"'); echo orders_csv(); exit; }
   if ($seg[0]==='users' && ($seg[2]??'')==='orders'){ require_admin(); out(orders_all($seg[1])); }
   if ($path==='login' && $method==='POST'){

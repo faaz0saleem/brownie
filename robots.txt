@@ -2,11 +2,10 @@
 User-agent: *
 Allow: /
 
-# Nothing useful for search here
 Disallow: /cart
 Disallow: /checkout
 Disallow: /track
-Disallow: /product
+Disallow: /bandana
 Disallow: /api/
 Disallow: /admin/
 

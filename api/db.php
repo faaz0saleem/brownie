@@ -5,6 +5,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/sms.php';
+require_once __DIR__ . '/catalog.php';
 
 /* ---------------- .env loader ----------------------------------------------
    Two files, read in order:
@@ -120,7 +121,7 @@ function db_init(PDO $pdo, string $driver): void {
     description TEXT, price INT, gradient VARCHAR(255), emoji VARCHAR(16), image_url $bigimg,
     flavors TEXT, sizes TEXT, allergens TEXT, contains_nuts INT DEFAULT 0,
     stock INT DEFAULT 0, sold INT DEFAULT 0, featured INT DEFAULT 0, active INT DEFAULT 1,
-    sort_order INT DEFAULT 0, created_at BIGINT)");
+    sort_order INT DEFAULT 0, created_at BIGINT, color VARCHAR(16), ink VARCHAR(16))");
   $pdo->exec("CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(40) PRIMARY KEY, name VARCHAR(160), email VARCHAR(191), phone VARCHAR(40),
     password_hash VARCHAR(255), google_id VARCHAR(64), avatar_url TEXT,
@@ -129,7 +130,8 @@ function db_init(PDO $pdo, string $driver): void {
   $pdo->exec("CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(40) PRIMARY KEY, user_id VARCHAR(40), items TEXT, customer TEXT,
     subtotal INT, delivery_fee INT, total INT, payment_method VARCHAR(20),
-    status VARCHAR(40), status_history TEXT, created_at BIGINT)");
+    status VARCHAR(40), status_history TEXT, created_at BIGINT, currency VARCHAR(8) DEFAULT 'PKR',
+    discount INT DEFAULT 0)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS visits (
     id VARCHAR(40) PRIMARY KEY, visitor VARCHAR(40), page VARCHAR(191), ip VARCHAR(64),
     referrer VARCHAR(255), ua VARCHAR(255), created_at BIGINT)");
@@ -142,125 +144,134 @@ function db_init(PDO $pdo, string $driver): void {
   $pdo->exec("CREATE TABLE IF NOT EXISTS rate_hits (
     id VARCHAR(40) PRIMARY KEY, bucket VARCHAR(80), ip VARCHAR(64), created_at BIGINT)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS counters (name VARCHAR(40) PRIMARY KEY, value BIGINT)");
+  $pdo->exec("CREATE TABLE IF NOT EXISTS settings (k VARCHAR(40) PRIMARY KEY, v TEXT)");
+  // "Get new colours first" sign-ups, and messages from the contact form.
+  $pdo->exec("CREATE TABLE IF NOT EXISTS subscribers (
+    email VARCHAR(191) PRIMARY KEY, source VARCHAR(40), created_at BIGINT)");
+  $pdo->exec("CREATE TABLE IF NOT EXISTS messages (
+    id VARCHAR(40) PRIMARY KEY, name VARCHAR(120), email VARCHAR(191), phone VARCHAR(40),
+    topic VARCHAR(60), body TEXT, status VARCHAR(20) DEFAULT 'new', created_at BIGINT)");
   $pdo->exec("INSERT " . ($driver === 'mysql' ? 'IGNORE ' : 'OR IGNORE ') .
              "INTO counters (name, value) VALUES ('orderSeq', 1000)");
 
-  $count = (int) $pdo->query("SELECT COUNT(*) AS c FROM products")->fetch()['c'];
-  if ($count === 0) db_seed($pdo);
+  // Also seeds a brand-new database: the catalogue insert in db_migrate()
+  // adds every colour a fresh shop does not have yet.
+  db_migrate($pdo, $driver);
+}
 
-  db_migrate($pdo);
+/** Reads/writes one small value in the settings table (not the 'store' JSON). */
+function meta_get(PDO $pdo, string $k): string {
+  try { $r = $pdo->prepare("SELECT v FROM settings WHERE k=?"); $r->execute([$k]); $row = $r->fetch(); return $row ? (string)$row['v'] : ''; }
+  catch (Throwable $e) { return ''; }
+}
+function meta_set(PDO $pdo, string $driver, string $k, string $v): void {
+  if ($driver === 'mysql') $pdo->prepare("INSERT INTO settings (k,v) VALUES (?,?) ON DUPLICATE KEY UPDATE v=?")->execute([$k, $v, $v]);
+  else $pdo->prepare("INSERT OR REPLACE INTO settings (k,v) VALUES (?,?)")->execute([$k, $v]);
 }
 
 /**
- * Brings existing rows up to date with the current catalogue shape. Runs on
- * every request, so it must be cheap and must converge: once a row matches,
- * no UPDATE is issued and the whole thing is three SELECTed rows.
+ * Brings an existing database up to date. Runs on every request, so it is
+ * split in two:
  *
- * Prices the admin has set are never overwritten — the migration only drops
- * sizes we no longer sell and fills in ones that are missing.
+ *  - One-time steps, gated by a `schema` level stored in settings. These are
+ *    the ones that write: switching the shop from brownies to bandanas, adding
+ *    the order currency column, renaming a retired status. Once the level is
+ *    recorded they cost a single SELECT.
+ *  - Size enforcement, which must keep holding as the admin edits products
+ *    but issues no UPDATE once every row already matches.
  */
-function db_migrate(PDO $pdo): void {
-  // Every brownie is sold exactly three ways, in this order.
-  $WANT = [
-    ['key' => 'single', 'label' => 'Single brownie', 'pieces' => 1],
-    ['key' => '6',      'label' => 'Box of 6',       'pieces' => 6],
-    ['key' => '9',      'label' => 'Box of 9',       'pieces' => 9],
-  ];
-  // Ratios taken from the seed prices, used only to invent a price for a size
-  // that does not exist yet. Anything already priced keeps its price.
-  $FROM_SIX = ['single' => 0.211, '6' => 1.0, '9' => 1.433];
-
-  /** Which of the three a stored label refers to, or null if we no longer sell it. */
-  $classify = function (string $label): ?string {
-    $l = strtolower($label);
-    if (strpos($l, 'single') !== false || strpos($l, '1 ') === 0) return 'single';
-    if (strpos($l, '6') !== false) return '6';
-    if (strpos($l, '9') !== false) return '9';
-    return null;
-  };
-
-  // The palette moved from browns to the brand's black/orange/pink. Only the
-  // known old values are replaced, so a gradient set in the admin survives.
-  $GRADIENTS = [
-    'chocolate'      => 'linear-gradient(135deg,#0b0a0a,#ff6a13)',
-    'nutty-delight'  => 'linear-gradient(135deg,#ff6a13,#ff2e88)',
-    'salted-caramel' => 'linear-gradient(135deg,#ff2e88,#0b0a0a)',
-  ];
-  $OLD_GRADIENTS = [
-    'linear-gradient(135deg,#5b3a29,#2b1a12)', 'linear-gradient(135deg, #5b3a29 0%, #2b1a12 100%)',
-    'linear-gradient(135deg,#6d4c2f,#3a2417)', 'linear-gradient(135deg, #6d4c2f 0%, #3a2417 100%)',
-    'linear-gradient(135deg,#a06a34,#3b230f)', 'linear-gradient(135deg, #a06a34 0%, #3b230f 100%)',
-  ];
-
+function db_migrate(PDO $pdo, string $driver = 'sqlite'): void {
   try {
-    $rows = $pdo->query("SELECT id, slug, sizes, price, gradient FROM products")->fetchAll();
-    $updSizes = $pdo->prepare("UPDATE products SET sizes=? WHERE id=?");
-    $updGrad  = $pdo->prepare("UPDATE products SET gradient=? WHERE id=?");
+    $level = (int) meta_get($pdo, 'schema');
 
-    foreach ($rows as $r) {
-      /* ---- sizes: exactly the three we sell ---- */
-      $current = json_decode($r['sizes'] ?? '[]', true) ?: [];
-      $priced  = [];
-      foreach ($current as $s) {
-        $key = $classify((string)($s['label'] ?? ''));
-        if ($key !== null && !isset($priced[$key])) $priced[$key] = (int)($s['price'] ?? 0);
-      }
+    if ($level < 2) {
+      // Columns added since the brownie shop. Each is checked first so this
+      // is safe on a database that already has some of them.
+      $add = function (string $table, string $col, string $type) use ($pdo) {
+        try { $pdo->query("SELECT $col FROM $table LIMIT 1"); }
+        catch (Throwable $e) { $pdo->exec("ALTER TABLE $table ADD COLUMN $col $type"); }
+      };
+      $add('orders', 'currency', "VARCHAR(8) DEFAULT 'PKR'");   // PKR in Pakistan, USD abroad
+      $add('orders', 'discount', 'INT DEFAULT 0');              // the buy-3 deal
+      $add('products', 'color', 'VARCHAR(16)');                 // ground colour of the print
+      $add('products', 'ink', 'VARCHAR(16)');                   // colour the print is in
 
-      // Work out a per-box-of-6 baseline to derive anything still missing.
-      $six = $priced['6']
-          ?? (isset($priced['single']) ? (int) round($priced['single'] / $FROM_SIX['single'])
-          :  (isset($priced['9'])      ? (int) round($priced['9']      / $FROM_SIX['9'])
-          :  max(1, (int)($r['price'] ?? 900))));
+      // "Baking" meant nothing for a bandana. Orders sitting in it move on.
+      $pdo->exec("UPDATE orders SET status='Packed' WHERE status='Baking'");
 
-      $next = [];
-      foreach ($WANT as $w) {
-        $price = $priced[$w['key']] ?? (int) (round($six * $FROM_SIX[$w['key']] / 10) * 10);
-        $next[] = ['label' => $w['label'], 'pieces' => $w['pieces'], 'price' => max(1, $price)];
-      }
-      // Only write when something actually changed, so this settles to a no-op.
-      if (json_encode($next) !== json_encode($current)) $updSizes->execute([json_encode($next), $r['id']]);
+      // The shop now sells bandanas. The brownies are hidden, not deleted:
+      // past orders keep their own copies of every line, and the admin can
+      // remove the hidden rows for good with Delete if they want them gone.
+      // On a new database this same insert is the seed.
+      $retired = retired_slugs();
+      $marks = implode(',', array_fill(0, count($retired), '?'));
+      $pdo->prepare("UPDATE products SET active=0, featured=0 WHERE slug IN ($marks)")->execute($retired);
 
-      /* ---- gradient: retire the old brown pairs ---- */
-      $grad = trim((string)($r['gradient'] ?? ''));
-      if (isset($GRADIENTS[$r['slug']]) && ($grad === '' || in_array($grad, $OLD_GRADIENTS, true))) {
-        $updGrad->execute([$GRADIENTS[$r['slug']], $r['id']]);
-      }
+      $have = [];
+      foreach ($pdo->query("SELECT slug FROM products")->fetchAll() as $r) $have[$r['slug']] = true;
+      foreach (bandana_catalog() as $b) if (empty($have[$b['slug']])) db_insert_product($pdo, $b);
+
+      meta_set($pdo, $driver, 'schema', '2');
     }
-  } catch (Throwable $e) { /* non-fatal: never block a page load on a migration */ }
+
+    db_enforce_sizes($pdo);
+  } catch (Throwable $e) { /* never block a page load on a migration */ }
 }
 
-function db_seed(PDO $pdo): void {
-  $now = now_ms();
-  $catalog = [
-    ['chocolate', 'Classic Chocolate', 'The original, impossibly fudgy',
-     'Dense, gooey and deeply chocolatey with a crackly, paper-thin top. Made from our secret small-batch recipe using premium dark chocolate and real butter.',
-     900, 'linear-gradient(135deg,#0b0a0a,#ff6a13)', '🍫',
-     [['label'=>'Single brownie','pieces'=>1,'price'=>190],['label'=>'Box of 6','pieces'=>6,'price'=>900],['label'=>'Box of 9','pieces'=>9,'price'=>1290]],
-     ['Gluten (wheat)','Dairy','Eggs','Soy'], 0, 60, 0],
-    ['nutty-delight', 'Nutty Delight', 'Loaded with toasted nuts',
-     'A rich chocolate brownie packed with roasted walnuts and hazelnuts for a satisfying crunch in every bite. Made from our secret small-batch recipe.',
-     1050, 'linear-gradient(135deg,#ff6a13,#ff2e88)', '🌰',
-     [['label'=>'Single brownie','pieces'=>1,'price'=>220],['label'=>'Box of 6','pieces'=>6,'price'=>1050],['label'=>'Box of 9','pieces'=>9,'price'=>1490]],
-     ['Tree nuts (walnut, hazelnut)','Gluten (wheat)','Dairy','Eggs','Soy'], 1, 45, 1],
-    ['salted-caramel', 'Salted Caramel', 'Sweet, salty, unforgettable',
-     'Ribbons of golden salted caramel swirled through a fudgy chocolate brownie and finished with a pinch of flaky sea salt. Made from our secret small-batch recipe.',
-     1050, 'linear-gradient(135deg,#ff2e88,#0b0a0a)', '🍯',
-     [['label'=>'Single brownie','pieces'=>1,'price'=>220],['label'=>'Box of 6','pieces'=>6,'price'=>1050],['label'=>'Box of 9','pieces'=>9,'price'=>1490]],
-     ['Gluten (wheat)','Dairy','Eggs','Soy'], 0, 50, 2],
-  ];
-  $st = $pdo->prepare("INSERT INTO products
-    (id, slug, name, tagline, description, price, gradient, emoji, image_url,
-     flavors, sizes, allergens, contains_nuts, stock, sold, featured, active, sort_order, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-  foreach ($catalog as $c) {
-    [$slug,$name,$tag,$desc,$price,$grad,$emoji,$sizes,$allergens,$nuts,$stock,$sort] = $c;
-    $st->execute([gen_id(), $slug, $name, $tag, $desc, $price, $grad, $emoji, null,
-      json_encode([$name]), json_encode($sizes), json_encode($allergens), $nuts,
-      $stock, 0, 1, 1, $sort, $now]);
+/**
+ * Every bandana is the same 55 cm square, so each colour has exactly one size.
+ * The rupee and dollar prices the admin set are kept; anything else on the
+ * row (a pack from an earlier version, a stray label) is folded away.
+ */
+function db_enforce_sizes(PDO $pdo): void {
+  $want = bandana_sizes()[0];
+  $rows = $pdo->query("SELECT id, sizes FROM products WHERE active=1")->fetchAll();
+  $upd = $pdo->prepare("UPDATE products SET sizes=? WHERE id=?");
+  foreach ($rows as $r) {
+    $current = json_decode($r['sizes'] ?? '[]', true) ?: [];
+    // Prefer the price set on a single; fall back to whatever came first.
+    $have = [];
+    foreach ($current as $sz) if ((int)($sz['pieces'] ?? 1) === 1) { $have = $sz; break; }
+    if (!$have && $current) $have = $current[0];
+    $next = [[
+      'label'  => $want['label'],
+      'pieces' => 1,
+      'price'  => isset($have['price']) && (int)$have['price'] > 0 ? (int)$have['price'] : $want['price'],
+      'usd'    => isset($have['usd'])   && (int)$have['usd']   > 0 ? (int)$have['usd']   : $want['usd'],
+    ]];
+    if (json_encode($next) !== json_encode($current)) $upd->execute([json_encode($next), $r['id']]);
   }
 }
 
+/** Inserts one catalogue entry (see bandana_catalog()). */
+function db_insert_product(PDO $pdo, array $b): void {
+  $st = $pdo->prepare("INSERT INTO products
+    (id, slug, name, tagline, description, price, gradient, emoji, image_url,
+     flavors, sizes, allergens, contains_nuts, stock, sold, featured, active, sort_order, created_at, color, ink)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  $st->execute([gen_id(), $b['slug'], $b['name'], $b['tagline'], $b['description'],
+    (int)$b['sizes'][0]['price'], $b['gradient'], $b['emoji'], null,
+    json_encode([$b['name']]), json_encode($b['sizes']), json_encode($b['details']), 0,
+    (int)$b['stock'], 0, !empty($b['featured']) ? 1 : 0, 1, (int)$b['sort'], now_ms(),
+    $b['color'] ?? null, $b['ink'] ?? null]);
+}
+
+
 /* ---------------- helpers ---------------- */
+/** Keeps a size list to the fields orders are priced from, with sane numbers. */
+function clean_sizes(array $sizes): array {
+  $out = [];
+  foreach ($sizes as $sz) {
+    if (!is_array($sz)) continue;
+    $label = trim(clean_text($sz['label'] ?? '', 40));
+    if ($label === '') continue;
+    $row = ['label' => $label, 'price' => max(0, (int)($sz['price'] ?? 0))];
+    if (isset($sz['pieces'])) $row['pieces'] = max(1, (int)$sz['pieces']);
+    if (isset($sz['usd']) && (int)$sz['usd'] > 0) $row['usd'] = (int)$sz['usd'];
+    $out[] = $row;
+  }
+  return $out;
+}
 function now_ms(): int { return (int) round(microtime(true) * 1000); }
 function gen_id(): string { return base_convert((string) time(), 10, 36) . bin2hex(random_bytes(4)); }
 function jdec($s, $d = []) { if ($s === null || $s === '') return $d; $v = json_decode($s, true); return $v === null ? $d : $v; }
@@ -270,17 +281,19 @@ function map_product(array $r): array {
     'id'=>$r['id'],'slug'=>$r['slug'],'name'=>$r['name'],'tagline'=>$r['tagline'],
     'description'=>$r['description'],'price'=>(int)$r['price'],'gradient'=>$r['gradient'],
     'emoji'=>$r['emoji'],'imageUrl'=>$r['image_url'],'flavors'=>jdec($r['flavors']),
-    'sizes'=>jdec($r['sizes']),'allergens'=>jdec($r['allergens']),
+    'sizes'=>jdec($r['sizes']),'allergens'=>jdec($r['allergens']),'details'=>jdec($r['allergens']),
     'containsNuts'=>(bool)$r['contains_nuts'],'stock'=>(int)$r['stock'],'sold'=>(int)$r['sold'],
     'featured'=>(bool)$r['featured'],'active'=>(bool)$r['active'],'sort'=>(int)$r['sort_order'],
+    'color'=>($r['color'] ?? '') ?: '#C3201B','ink'=>($r['ink'] ?? '') ?: '#F3EDE0',
     'createdAt'=>(int)$r['created_at'],
   ];
 }
 function map_order(array $r): array {
   return [
     'id'=>$r['id'],'userId'=>$r['user_id'],'items'=>jdec($r['items']),'customer'=>jdec($r['customer'], (object)[]),
-    'subtotal'=>(int)$r['subtotal'],'deliveryFee'=>(int)$r['delivery_fee'],'total'=>(int)$r['total'],
+    'subtotal'=>(int)$r['subtotal'],'discount'=>(int)($r['discount'] ?? 0),'deliveryFee'=>(int)$r['delivery_fee'],'total'=>(int)$r['total'],
     'paymentMethod'=>$r['payment_method'],'status'=>$r['status'],'statusHistory'=>jdec($r['status_history']),
+    'currency'=>($r['currency'] ?? '') ?: 'PKR',
     'createdAt'=>(int)$r['created_at'],
   ];
 }
@@ -308,28 +321,46 @@ function product_get(string $idOrSlug, bool $includeInactive = false): ?array {
 function product_update(string $id, array $patch): ?array {
   $cur = product_get($id, true);
   if (!$cur) return null;
+  if (array_key_exists('details', $patch)) $patch['allergens'] = $patch['details'];
+  if (isset($patch['sizes']) && is_array($patch['sizes'])) $patch['sizes'] = clean_sizes($patch['sizes']);
+  // A bad colour is ignored rather than stored: it would draw a blank print.
+  foreach (['color', 'ink'] as $k) if (array_key_exists($k, $patch)) {
+    $hex = clean_hex($patch[$k]);
+    if ($hex === '') unset($patch[$k]); else $patch[$k] = $hex;
+  }
+  foreach (['name' => 80, 'tagline' => 120, 'description' => 1200] as $k => $max)
+    if (isset($patch[$k])) $patch[$k] = clean_text($patch[$k], $max);
   $m = array_merge($cur, $patch);
+  if (!empty($m['sizes'][0]['price'])) $m['price'] = (int)$m['sizes'][0]['price'];
   $st = db()->prepare("UPDATE products SET slug=?, name=?, tagline=?, description=?, price=?, gradient=?, emoji=?,
-    image_url=?, flavors=?, sizes=?, allergens=?, contains_nuts=?, stock=?, sold=?, featured=?, active=?, sort_order=? WHERE id=?");
+    image_url=?, flavors=?, sizes=?, allergens=?, contains_nuts=?, stock=?, sold=?, featured=?, active=?, sort_order=?,
+    color=?, ink=? WHERE id=?");
   $st->execute([$m['slug'],$m['name'],$m['tagline'],$m['description'],(int)$m['price'],$m['gradient'],$m['emoji'],
     $m['imageUrl'] ?? null, json_encode($m['flavors']), json_encode($m['sizes']), json_encode($m['allergens']),
-    !empty($m['containsNuts'])?1:0, (int)$m['stock'], (int)$m['sold'], !empty($m['featured'])?1:0,
-    !empty($m['active'])?1:0, (int)($m['sort'] ?? 0), $id]);
+    !empty($m['containsNuts'])?1:0, max(0, (int)$m['stock']), (int)$m['sold'], !empty($m['featured'])?1:0,
+    !empty($m['active'])?1:0, (int)($m['sort'] ?? 0), $m['color'], $m['ink'], $id]);
   return product_get($id, true);
 }
 function product_create(array $d): array {
   $id = gen_id();
-  $slug = $d['slug'] ?? strtolower(preg_replace('/[^a-z0-9]+/i', '-', trim($d['name'] ?? 'brownie')));
-  $slug = trim($slug, '-') ?: 'brownie';
+  $slug = $d['slug'] ?? strtolower(preg_replace('/[^a-z0-9]+/i', '-', trim($d['name'] ?? 'bandana')));
+  $slug = trim($slug, '-') ?: 'bandana';
+  if (isset($d['details'])) $d['allergens'] = $d['details'];
+  $d['sizes'] = clean_sizes(!empty($d['sizes']) && is_array($d['sizes']) ? $d['sizes'] : bandana_sizes());
+  // Slugs are URLs, so they must be unique: a second "Navy" becomes navy-2.
+  $base = $slug; $n = 1;
+  while (product_get($slug, true)) $slug = $base . '-' . (++$n);
+  $color = clean_hex($d['color'] ?? '') ?: '#FF6A13';
+  $ink   = clean_hex($d['ink'] ?? '') ?: '#FFFFFF';
   $st = db()->prepare("INSERT INTO products
     (id, slug, name, tagline, description, price, gradient, emoji, image_url,
-     flavors, sizes, allergens, contains_nuts, stock, sold, featured, active, sort_order, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-  $st->execute([$id, $slug, $d['name'] ?? 'New Brownie', $d['tagline'] ?? '', $d['description'] ?? '',
-    (int)($d['price'] ?? 0), $d['gradient'] ?? 'linear-gradient(135deg,#5b3a29,#2b1a12)', $d['emoji'] ?? '🍫',
+     flavors, sizes, allergens, contains_nuts, stock, sold, featured, active, sort_order, created_at, color, ink)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  $st->execute([$id, $slug, clean_text($d['name'] ?? 'New colour', 80), clean_text($d['tagline'] ?? '', 120), clean_text($d['description'] ?? '', 1200),
+    (int)($d['sizes'][0]['price'] ?? $d['price'] ?? 0), $color, $d['emoji'] ?? '',
     $d['imageUrl'] ?? null, json_encode($d['flavors'] ?? []), json_encode($d['sizes'] ?? []),
-    json_encode($d['allergens'] ?? []), !empty($d['containsNuts'])?1:0, (int)($d['stock'] ?? 0), 0,
-    !empty($d['featured'])?1:0, isset($d['active']) ? ((int)!!$d['active']) : 1, (int)($d['sort'] ?? 0), now_ms()]);
+    json_encode($d['allergens'] ?? bandana_details()), 0, max(0, (int)($d['stock'] ?? 0)), 0,
+    !empty($d['featured'])?1:0, isset($d['active']) ? ((int)!!$d['active']) : 1, (int)($d['sort'] ?? 0), now_ms(), $color, $ink]);
   return product_get($id, true);
 }
 
@@ -362,7 +393,7 @@ function clean_text($s, int $max = 200): string {
 }
 
 function order_create(array $items, array $customer, ?string $userId): array {
-  foreach (['name'=>80,'phone'=>30,'email'=>191,'address'=>300,'city'=>60,'notes'=>300] as $f=>$max)
+  foreach (['name'=>80,'phone'=>30,'email'=>191,'address'=>300,'city'=>60,'postcode'=>20,'notes'=>300,'country'=>2] as $f=>$max)
     if (isset($customer[$f])) $customer[$f] = clean_text($customer[$f], $max);
 
   if (!$items) return ['error' => 'Your cart is empty.'];
@@ -371,12 +402,20 @@ function order_create(array $items, array $customer, ?string $userId): array {
   if (!filter_var($customer['email'], FILTER_VALIDATE_EMAIL))
     return ['error' => 'Please enter a valid email address.'];
   $digits = preg_replace('/\D/', '', $customer['phone']);
-  if (strlen($digits) < 10 || strlen($digits) > 15)
+  if (strlen($digits) < 7 || strlen($digits) > 15)
     return ['error' => 'Please enter a valid phone number.'];
-  // We currently deliver in Lahore only.
-  $allowedCity = env('DELIVERY_CITY', 'Lahore');
-  if (strcasecmp(trim($customer['city']), $allowedCity) !== 0)
-    return ['error' => "Sorry, we currently deliver in $allowedCity only."];
+
+  // Where it is going decides everything else: Pakistan is cash on delivery
+  // in rupees; anywhere else is paid up front in dollars. A request with no
+  // country is treated as Pakistan, which is what every order was before
+  // worldwide shipping existed (an old cached checkout page sends none).
+  $country = strtoupper(trim((string)($customer['country'] ?? ''))) ?: 'PK';
+  if (country_name($country) === '') return ['error' => 'Please choose the country we should ship to.'];
+  $domestic = is_domestic($country);
+  $s = settings_get();
+  if (!$domestic && empty($s['intlEnabled']))
+    return ['error' => 'Sorry, we are only shipping within Pakistan right now.'];
+  $rate = max(1, (int)$s['usdRate']);
 
   $email = strtolower(trim($customer['email']));
 
@@ -432,52 +471,87 @@ function order_create(array $items, array $customer, ?string $userId): array {
   if ($totalUnits > $maxUnits)
     return ['error' => "For bulk orders please contact us directly — maximum $maxUnits items per online order."];
 
-  $lineItems = []; $subtotal = 0;
+  $lineItems = []; $subtotal = 0; $need = [];
   foreach ($items as $it) {
     $p = product_get($it['productId'] ?? '');
     if (!$p) return ['error' => 'A product in your cart is no longer available.'];
     $qty = max(1, (int)($it['qty'] ?? 1));
-    if ($p['stock'] < $qty) return ['error' => "Only {$p['stock']} left of {$p['name']}."];
-    $unit = $p['price']; $sizeLabel = '';
+    $size = ['label' => '', 'price' => $p['price']];
     if ($p['sizes']) {
       $size = null;
-      foreach ($p['sizes'] as $s) if (($s['label'] ?? '') === ($it['size'] ?? '')) $size = $s;
+      foreach ($p['sizes'] as $sz) if (($sz['label'] ?? '') === ($it['size'] ?? '')) $size = $sz;
       if (!$size) $size = $p['sizes'][0];
-      $unit = (int)$size['price']; $sizeLabel = $size['label'];
+    }
+    // The price is always read from the catalogue, never from the request,
+    // and in the currency of the destination.
+    $unit = $domestic ? (int)$size['price'] : size_usd($size, $rate);
+    $sizeLabel = (string)($size['label'] ?? '');
+    $pieces = max(1, (int)($size['pieces'] ?? 1));
+    $need[$p['id']] = ($need[$p['id']] ?? 0) + $qty * $pieces;
+    if ($p['stock'] < $need[$p['id']]) {
+      return ['error' => $p['stock'] > 0
+        ? "Only {$p['stock']} {$p['name']} left — please choose a smaller quantity."
+        : "{$p['name']} has just sold out."];
     }
     $lineTotal = $unit * $qty; $subtotal += $lineTotal;
-    $lineItems[] = ['productId'=>$p['id'],'name'=>$p['name'],'emoji'=>$p['emoji'],
-      'size'=>$sizeLabel,'qty'=>$qty,'price'=>$unit,'lineTotal'=>$lineTotal];
+    // The colours are copied in so a past order still draws the right
+    // bandana after the product is edited or deleted.
+    $lineItems[] = ['productId'=>$p['id'],'slug'=>$p['slug'],'name'=>$p['name'],'emoji'=>$p['emoji'],
+      'color'=>$p['color'],'ink'=>$p['ink'],
+      'size'=>$sizeLabel,'pieces'=>$pieces,'qty'=>$qty,'price'=>$unit,'lineTotal'=>$lineTotal];
   }
   // Everything that can reject the order must run BEFORE stock is committed,
   // otherwise a rejected order would silently eat inventory.
-  $s = settings_get();
   if (empty($s['storeOpen'])) return ['error' => 'Sorry, we are currently not accepting orders. Please check back soon.'];
-  if ($subtotal > $maxValue)
+  $subtotalPkr = $domestic ? $subtotal : $subtotal * $rate;   // the cap is in rupees
+  if ($subtotalPkr > $maxValue)
     return ['error' => 'For large orders please contact us directly so we can arrange it properly.'];
+
+  // The buy-3 deal, across any mix of colours. Counted in bandanas.
+  $units = 0; foreach ($lineItems as $li) $units += $li['qty'] * $li['pieces'];
+  $discount = bundle_discount($units, $subtotal, $s);
+  $afterDiscount = $subtotal - $discount;
 
   // commit stock
   foreach ($lineItems as $li) {
     $p = product_get($li['productId'], true);
-    product_update($p['id'], ['stock'=>$p['stock']-$li['qty'], 'sold'=>$p['sold']+$li['qty']]);
+    $units = $li['qty'] * $li['pieces'];
+    product_update($p['id'], ['stock'=>$p['stock']-$units, 'sold'=>$p['sold']+$units]);
   }
-  $delivery = $subtotal >= $s['freeDeliveryOver'] ? 0 : $s['deliveryFee'];
+  // Shipping: a flat courier fee inside Pakistan in rupees, a flat
+  // international fee in dollars. Either is waived over its threshold; an
+  // international threshold of 0 means it is never waived.
+  // Thresholds compare what the customer actually pays for the bandanas,
+  // after the deal, so the cart and the order agree to the rupee.
+  if ($domestic) {
+    $free = (int)$s['freeDeliveryOver'];
+    $delivery = ($free > 0 && $afterDiscount >= $free) ? 0 : (int)$s['deliveryFee'];
+  } else {
+    $free = (int)$s['intlFreeOver'];
+    $delivery = ($free > 0 && $afterDiscount >= $free) ? 0 : (int)$s['intlShipping'];
+  }
+  $currency = $domestic ? 'PKR' : 'USD';
+  $method   = $domestic ? 'COD' : 'Prepaid';
+  // An international order is not real until it is paid, so it waits there.
+  $status   = $domestic ? 'Pending' : 'Awaiting Payment';
   $now = now_ms();
   $order = [
     'id'=>next_order_id(),'userId'=>$userId,'items'=>$lineItems,
     'customer'=>[
       'name'=>trim($customer['name']),'phone'=>trim($customer['phone']),
       'address'=>trim($customer['address']),'city'=>trim($customer['city']),
+      'postcode'=>trim($customer['postcode'] ?? ''),
+      'country'=>$country,'countryName'=>country_name($country),
       'notes'=>trim($customer['notes'] ?? ''),'email'=>trim($customer['email'] ?? ''),
     ],
-    'subtotal'=>$subtotal,'deliveryFee'=>$delivery,'total'=>$subtotal+$delivery,
-    'paymentMethod'=>'COD','status'=>'Pending','statusHistory'=>[['status'=>'Pending','at'=>$now]],
+    'subtotal'=>$subtotal,'discount'=>$discount,'deliveryFee'=>$delivery,'total'=>$afterDiscount+$delivery,'currency'=>$currency,
+    'paymentMethod'=>$method,'status'=>$status,'statusHistory'=>[['status'=>$status,'at'=>$now]],
     'createdAt'=>$now,
   ];
-  $st = db()->prepare("INSERT INTO orders (id,user_id,items,customer,subtotal,delivery_fee,total,payment_method,status,status_history,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+  $st = db()->prepare("INSERT INTO orders (id,user_id,items,customer,subtotal,delivery_fee,total,payment_method,status,status_history,created_at,currency,discount)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
   $st->execute([$order['id'],$userId,json_encode($order['items']),json_encode($order['customer']),
-    $order['subtotal'],$order['deliveryFee'],$order['total'],'COD','Pending',json_encode($order['statusHistory']),$now]);
+    $order['subtotal'],$order['deliveryFee'],$order['total'],$method,$status,json_encode($order['statusHistory']),$now,$currency,$discount]);
 
   // upsert customer record
   $user = $userId ? user_by_id($userId) : null;
@@ -489,7 +563,9 @@ function order_create(array $items, array $customer, ?string $userId): array {
   user_update($user['id'], [
     'name'=>$order['customer']['name'],'phone'=>$order['customer']['phone'],
     'city'=>$order['customer']['city'],'address'=>$order['customer']['address'],
-    'order_count'=>$user['orders']+1,'total_spent'=>$user['totalSpent']+$order['total'],'last_order_at'=>$now,
+    'order_count'=>$user['orders']+1,
+    'total_spent'=>$user['totalSpent'] + ($domestic ? $order['total'] : $order['total'] * $rate),
+    'last_order_at'=>$now,
   ]);
   if (!$userId) { db()->prepare("UPDATE orders SET user_id=? WHERE id=?")->execute([$user['id'],$order['id']]); $order['userId']=$user['id']; }
 
@@ -509,17 +585,24 @@ function order_create(array $items, array $customer, ?string $userId): array {
 function notify_order(array $o): void {
   $to = env('ORDER_NOTIFY_TO', env('CONTACT_EMAIL'));
   if (!$to) return;
-  $cur = cfg()['currency'];
+  $usd = ($o['currency'] ?? 'PKR') === 'USD';
+  $m = fn($n) => $usd ? '$' . number_format((float)$n) : 'Rs ' . number_format((float)$n);
   $lines = '';
   foreach ($o['items'] as $li)
-    $lines .= "- {$li['qty']}x {$li['name']}" . ($li['size'] ? " ({$li['size']})" : '') . " - $cur " . number_format($li['lineTotal']) . "\n";
+    $lines .= "- {$li['qty']}x {$li['name']}" . ($li['size'] ? " ({$li['size']})" : '') . " - " . $m($li['lineTotal']) . "\n";
   $c = $o['customer'];
-  $body = "New Fudgio order {$o['id']}\n\nName: {$c['name']}\nPhone: {$c['phone']}\nCity: {$c['city']}\nAddress: {$c['address']}\n"
+  $where = trim(($c['city'] ?? '') . ', ' . ($c['countryName'] ?? 'Pakistan'), ', ');
+  $pay = $usd
+    ? "PREPAID — send the customer a payment link, and only ship once it is paid."
+    : "Cash on Delivery";
+  $body = "New Fudgio order {$o['id']}\n\nName: {$c['name']}\nPhone: {$c['phone']}\nEmail: " . ($c['email'] ?? '') . "\n"
+    . "Ship to: {$c['address']}, $where" . (!empty($c['postcode']) ? " {$c['postcode']}" : '') . "\n"
     . (!empty($c['notes']) ? "Notes: {$c['notes']}\n" : '')
-    . "\nItems:\n$lines\nSubtotal: $cur " . number_format($o['subtotal'])
-    . "\nDelivery: " . ($o['deliveryFee'] == 0 ? 'FREE' : "$cur " . number_format($o['deliveryFee']))
-    . "\nTOTAL: $cur " . number_format($o['total']) . " (Cash on Delivery)\n\nManage it in your admin dashboard.";
-  send_mail($to, "New order {$o['id']} - $cur " . number_format($o['total']) . ' (COD)', $body);
+    . "\nItems:\n$lines\nSubtotal: " . $m($o['subtotal'])
+    . (!empty($o['discount']) ? "\nBundle discount: -" . $m($o['discount']) : '')
+    . "\nShipping: " . ($o['deliveryFee'] == 0 ? 'FREE' : $m($o['deliveryFee']))
+    . "\nTOTAL: " . $m($o['total']) . "\nPayment: $pay\n\nManage it in your admin dashboard.";
+  send_mail($to, "New order {$o['id']} - " . $m($o['total']) . ($usd ? ' (international, prepaid)' : ' (COD)'), $body);
 }
 function orders_all(?string $userId = null): array {
   if ($userId) { $st = db()->prepare("SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC"); $st->execute([$userId]); $rows=$st->fetchAll(); }
@@ -531,14 +614,14 @@ function order_get(string $id): ?array {
   $r = $st->fetch(); return $r ? map_order($r) : null;
 }
 function order_update_status(string $id, string $status): array {
-  $allowed = ['Pending','Confirmed','Baking','Out for Delivery','Delivered','Cancelled'];
-  if (!in_array($status, $allowed, true)) return ['error' => 'Invalid status.'];
+  if (!in_array($status, order_statuses(), true)) return ['error' => 'Invalid status.'];
   $o = order_get($id);
   if (!$o) return ['error' => 'Order not found.'];
   if ($status === 'Cancelled' && $o['status'] !== 'Cancelled') {
     foreach ($o['items'] as $li) {
       $p = product_get($li['productId'], true);
-      if ($p) product_update($p['id'], ['stock'=>$p['stock']+$li['qty'], 'sold'=>max(0,$p['sold']-$li['qty'])]);
+      $units = (int)$li['qty'] * max(1, (int)($li['pieces'] ?? 1));
+      if ($p) product_update($p['id'], ['stock'=>$p['stock']+$units, 'sold'=>max(0,$p['sold']-$units)]);
     }
   }
   $hist = $o['statusHistory']; $hist[] = ['status'=>$status,'at'=>now_ms()];
@@ -581,7 +664,8 @@ function order_delete(string $id): bool {
   if ($o['status'] !== 'Cancelled') {
     foreach ($o['items'] as $li) {
       $p = product_get($li['productId'], true);
-      if ($p) product_update($p['id'], ['stock'=>$p['stock']+$li['qty'], 'sold'=>max(0,$p['sold']-$li['qty'])]);
+      $units = (int)$li['qty'] * max(1, (int)($li['pieces'] ?? 1));
+      if ($p) product_update($p['id'], ['stock'=>$p['stock']+$units, 'sold'=>max(0,$p['sold']-$units)]);
     }
   }
   db()->prepare("DELETE FROM orders WHERE id=?")->execute([$id]);
@@ -591,38 +675,151 @@ function order_delete(string $id): bool {
 /* ---------------- settings (store config editable from admin) ---------------- */
 function settings_get(): array {
   $c = cfg();
-  $defaults = ['deliveryFee'=>$c['deliveryFee'], 'freeDeliveryOver'=>$c['freeDeliveryOver'], 'storeOpen'=>true, 'announcement'=>''];
+  $defaults = [
+    'deliveryFee'      => $c['deliveryFee'],         // Pakistan, PKR
+    'freeDeliveryOver' => $c['freeDeliveryOver'],    // Pakistan, PKR
+    'storeOpen'        => true,
+    'announcement'     => '',
+    // International orders. The owner asked for shipping of roughly $10–20.
+    'intlEnabled'      => true,
+    'intlShipping'     => (int) env('INTL_SHIPPING_USD', '12'),
+    'intlFreeOver'     => (int) env('INTL_FREE_OVER_USD', '0'),   // 0 = never free
+    // Rupees per dollar: converts a size with no USD price set, and reports
+    // international revenue in rupees on the dashboard.
+    'usdRate'          => (int) env('USD_RATE', '280'),
+    // Where international customers pay: a PayPal.me, Wise or Payoneer link.
+    'intlPaymentLink'  => (string) env('INTL_PAYMENT_LINK', ''),
+    // The mix-and-match deal: this many bandanas or more take this % off.
+    'bundleQty'        => (int) env('BUNDLE_QTY', '3'),
+    'bundlePct'        => (int) env('BUNDLE_PCT', '15'),
+    // How long delivery takes, as shown on the site. Text, so "2–4" works.
+    'daysPk'           => (string) env('DELIVERY_DAYS_PK', '3–5'),
+    'daysIntl'         => (string) env('DELIVERY_DAYS_INTL', '7–14'),
+    // Social links for the footer and contact page. Blank hides them.
+    'instagram'        => (string) env('INSTAGRAM', ''),
+    'whatsapp'         => (string) env('WHATSAPP', ''),
+  ];
   try {
-    db()->exec("CREATE TABLE IF NOT EXISTS settings (k VARCHAR(40) PRIMARY KEY, v TEXT)");
     $row = db()->query("SELECT v FROM settings WHERE k='store'")->fetch();
     if ($row) return array_merge($defaults, jdec($row['v'], []));
   } catch (Throwable $e) {}
   return $defaults;
 }
 function settings_set(array $patch): array {
-  db()->exec("CREATE TABLE IF NOT EXISTS settings (k VARCHAR(40) PRIMARY KEY, v TEXT)");
   $cur = settings_get();
-  if (isset($patch['deliveryFee'])) $cur['deliveryFee'] = max(0,(int)$patch['deliveryFee']);
-  if (isset($patch['freeDeliveryOver'])) $cur['freeDeliveryOver'] = max(0,(int)$patch['freeDeliveryOver']);
-  if (isset($patch['storeOpen'])) $cur['storeOpen'] = !!$patch['storeOpen'];
-  if (isset($patch['announcement'])) $cur['announcement'] = (string)$patch['announcement'];
+  if (isset($patch['deliveryFee']))      $cur['deliveryFee']      = max(0, (int)$patch['deliveryFee']);
+  if (isset($patch['freeDeliveryOver'])) $cur['freeDeliveryOver'] = max(0, (int)$patch['freeDeliveryOver']);
+  if (isset($patch['storeOpen']))        $cur['storeOpen']        = !!$patch['storeOpen'];
+  if (isset($patch['announcement']))     $cur['announcement']     = clean_text((string)$patch['announcement'], 200);
+  if (isset($patch['intlEnabled']))      $cur['intlEnabled']      = !!$patch['intlEnabled'];
+  if (isset($patch['intlShipping']))     $cur['intlShipping']     = max(0, (int)$patch['intlShipping']);
+  if (isset($patch['intlFreeOver']))     $cur['intlFreeOver']     = max(0, (int)$patch['intlFreeOver']);
+  if (isset($patch['usdRate']))          $cur['usdRate']          = max(1, (int)$patch['usdRate']);
+  if (isset($patch['bundleQty']))        $cur['bundleQty']        = max(2, min(20, (int)$patch['bundleQty']));
+  if (isset($patch['bundlePct']))        $cur['bundlePct']        = max(0, min(90, (int)$patch['bundlePct']));
+  if (isset($patch['daysPk']))           $cur['daysPk']           = clean_text((string)$patch['daysPk'], 20);
+  if (isset($patch['daysIntl']))         $cur['daysIntl']         = clean_text((string)$patch['daysIntl'], 20);
+  if (isset($patch['instagram']))        $cur['instagram']        = instagram_handle((string)$patch['instagram']);
+  if (isset($patch['whatsapp']))         $cur['whatsapp']         = preg_replace('/\D/', '', (string)$patch['whatsapp']);
+  if (isset($patch['intlPaymentLink'])) {
+    // Shown to customers as a link, so only an http(s) URL is accepted.
+    $link = trim((string)$patch['intlPaymentLink']);
+    $cur['intlPaymentLink'] = ($link === '' || preg_match('#^https?://[^\s"<>]+$#i', $link)) ? $link : $cur['intlPaymentLink'];
+  }
   $v = json_encode($cur);
-  $driver = db_driver();
-  if ($driver==='mysql') db()->prepare("INSERT INTO settings (k,v) VALUES ('store',?) ON DUPLICATE KEY UPDATE v=?")->execute([$v,$v]);
+  if (db_driver()==='mysql') db()->prepare("INSERT INTO settings (k,v) VALUES ('store',?) ON DUPLICATE KEY UPDATE v=?")->execute([$v,$v]);
   else db()->prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('store',?)")->execute([$v]);
   return $cur;
 }
+/** "@fudgio", "fudgio" or an instagram.com URL, stored as the bare handle. */
+function instagram_handle(string $v): string {
+  $v = trim($v);
+  if (preg_match('#instagram\.com/([A-Za-z0-9._]{1,30})#i', $v, $m)) $v = $m[1];
+  $v = ltrim($v, '@');
+  return preg_match('/^[A-Za-z0-9._]{1,30}$/', $v) ? $v : '';
+}
 function orders_csv(): string {
   $rows = orders_all();
-  $out = "Order,Date,Name,Phone,Email,City,Address,Items,Total,Payment,Status\n";
+  $out = "Order,Date,Name,Phone,Email,Country,City,Postcode,Address,Items,Currency,Discount,Total,Payment,Status\n";
   foreach ($rows as $o) {
     $items = implode('; ', array_map(fn($li)=>"{$li['qty']}x {$li['name']}".($li['size']?" ({$li['size']})":''), $o['items']));
     $c = $o['customer'];
     $cells = [$o['id'], date('Y-m-d H:i', (int)($o['createdAt']/1000)), $c['name']??'', $c['phone']??'', $c['email']??'',
-      $c['city']??'', $c['address']??'', $items, $o['total'], $o['paymentMethod'], $o['status']];
+      $c['countryName'] ?? 'Pakistan', $c['city']??'', $c['postcode']??'', $c['address']??'', $items,
+      $o['currency'] ?? 'PKR', $o['discount'] ?? 0, $o['total'], $o['paymentMethod'], $o['status']];
+    // A leading = + - @ makes a spreadsheet treat the cell as a formula; these
+    // cells hold customer-typed text, so neutralise that before export.
+    $cells = array_map(fn($x) => preg_match('/^[=+\-@]/', (string)$x) ? "'" . $x : $x, $cells);
     $out .= implode(',', array_map(fn($x)=>'"'.str_replace('"','""',(string)$x).'"', $cells)) . "\n";
   }
   return $out;
+}
+
+/* ---------------- newsletter ---------------- */
+/** Adds an email to "get new colours first". Signing up twice is not an error. */
+function subscriber_add(string $email, string $source): array {
+  $email = strtolower(trim($email));
+  if (strlen($email) > 191 || !filter_var($email, FILTER_VALIDATE_EMAIL)) return ['error' => 'Please enter a valid email address.'];
+  $source = clean_text($source, 40) ?: 'site';
+  $ins = db_driver() === 'mysql' ? 'INSERT IGNORE' : 'INSERT OR IGNORE';
+  db()->prepare("$ins INTO subscribers (email, source, created_at) VALUES (?,?,?)")->execute([$email, $source, now_ms()]);
+  return ['ok' => true];
+}
+function subscribers_all(): array {
+  $rows = db()->query("SELECT email, source, created_at FROM subscribers ORDER BY created_at DESC")->fetchAll();
+  return array_map(fn($r) => ['email' => $r['email'], 'source' => $r['source'], 'createdAt' => (int)$r['created_at']], $rows);
+}
+function subscriber_delete(string $email): bool {
+  $st = db()->prepare("DELETE FROM subscribers WHERE email=?"); $st->execute([strtolower(trim($email))]);
+  return $st->rowCount() > 0;
+}
+function subscribers_csv(): string {
+  $out = "Email,Source,Signed up\n";
+  foreach (subscribers_all() as $r)
+    $out .= '"' . str_replace('"', '""', $r['email']) . '","' . $r['source'] . '","' . date('Y-m-d H:i', (int)($r['createdAt'] / 1000)) . "\"\n";
+  return $out;
+}
+
+/* ---------------- contact messages ---------------- */
+function message_topics(): array { return ['Order', 'Bulk or custom', 'Wholesale', 'Press', 'Other']; }
+/** Saves a contact-form message. Returns the stored message or an error. */
+function message_create(array $b): array {
+  $m = [
+    'name'  => clean_text($b['name'] ?? '', 120),
+    'email' => strtolower(clean_text($b['email'] ?? '', 191)),
+    'phone' => clean_text($b['phone'] ?? '', 40),
+    'topic' => clean_text($b['topic'] ?? '', 60),
+    'body'  => clean_text($b['message'] ?? '', 3000),
+  ];
+  if ($m['name'] === '' || $m['body'] === '') return ['error' => 'Please add your name and a message.'];
+  if (!filter_var($m['email'], FILTER_VALIDATE_EMAIL)) return ['error' => 'Please enter a valid email address so we can reply.'];
+  if (!in_array($m['topic'], message_topics(), true)) $m['topic'] = 'Other';
+  $m['id'] = gen_id(); $m['status'] = 'new'; $m['createdAt'] = now_ms();
+  db()->prepare("INSERT INTO messages (id,name,email,phone,topic,body,status,created_at) VALUES (?,?,?,?,?,?,?,?)")
+     ->execute([$m['id'], $m['name'], $m['email'], $m['phone'], $m['topic'], $m['body'], 'new', $m['createdAt']]);
+  return ['message' => $m];
+}
+function messages_all(): array {
+  $rows = db()->query("SELECT * FROM messages ORDER BY created_at DESC")->fetchAll();
+  return array_map(fn($r) => ['id'=>$r['id'],'name'=>$r['name'],'email'=>$r['email'],'phone'=>$r['phone'],
+    'topic'=>$r['topic'],'body'=>$r['body'],'status'=>$r['status'],'createdAt'=>(int)$r['created_at']], $rows);
+}
+function message_set_status(string $id, string $status): bool {
+  if (!in_array($status, ['new', 'read', 'done'], true)) return false;
+  $st = db()->prepare("UPDATE messages SET status=? WHERE id=?"); $st->execute([$status, $id]);
+  return $st->rowCount() > 0;
+}
+function message_delete(string $id): bool {
+  $st = db()->prepare("DELETE FROM messages WHERE id=?"); $st->execute([$id]);
+  return $st->rowCount() > 0;
+}
+/** Emails the shop a copy of a contact message, with Reply-To set to the sender. */
+function notify_message(array $m): void {
+  $to = env('ORDER_NOTIFY_TO', env('CONTACT_EMAIL'));
+  if (!$to) return;
+  $body = "New message from the Fudgio contact form\n\nName: {$m['name']}\nEmail: {$m['email']}\n"
+    . ($m['phone'] !== '' ? "Phone: {$m['phone']}\n" : '') . "Topic: {$m['topic']}\n\n{$m['body']}\n\nReply to this email to answer them.";
+  send_mail($to, "Fudgio message: {$m['topic']} from {$m['name']}", $body, '', $m['email']);
 }
 
 /* ---------------- generic rate limiting ---------------- */
@@ -942,15 +1139,31 @@ function visit_stats(): array {
 /* ---------------- analytics ---------------- */
 function analytics(): array {
   $orders = orders_all(); $products = products_all(true); $users = users_all();
-  $active = array_values(array_filter($orders, fn($o)=>$o['status']!=='Cancelled'));
-  $delivered = array_values(array_filter($orders, fn($o)=>$o['status']==='Delivered'));
-  $revenue = array_sum(array_map(fn($o)=>$o['total'], $active));
+  $rate = max(1, (int) settings_get()['usdRate']);
+  // Orders arrive in two currencies. Everything summed across orders is in
+  // rupees, converting dollars at the admin's rate; the dollar and rupee
+  // figures are also reported separately so nothing is hidden by the rate.
+  $pkr = fn(array $o, $amount) => ($o['currency'] ?? 'PKR') === 'USD' ? $amount * $rate : $amount;
 
-  $per = [];
+  // Revenue counts orders that are going ahead. An international order that
+  // has not been paid yet is not revenue, and neither is a cancelled one.
+  $active    = array_values(array_filter($orders, fn($o)=>!in_array($o['status'], ['Cancelled','Awaiting Payment'], true)));
+  $awaiting  = array_values(array_filter($orders, fn($o)=>$o['status']==='Awaiting Payment'));
+  $delivered = array_values(array_filter($orders, fn($o)=>$o['status']==='Delivered'));
+  $revenue = 0; $revenuePkr = 0; $revenueUsd = 0;
+  foreach ($active as $o) {
+    $revenue += $pkr($o, $o['total']);
+    if (($o['currency'] ?? 'PKR') === 'USD') $revenueUsd += $o['total']; else $revenuePkr += $o['total'];
+  }
+  $awaitingUsd = array_sum(array_map(fn($o)=>$o['total'], $awaiting));
+
+  $per = []; $units = 0;
   foreach ($active as $o) foreach ($o['items'] as $li) {
-    $k=$li['productId'];
-    if(!isset($per[$k])) $per[$k]=['name'=>$li['name'],'emoji'=>$li['emoji'],'units'=>0,'revenue'=>0];
-    $per[$k]['units']+=$li['qty']; $per[$k]['revenue']+=$li['lineTotal'];
+    $k = $li['productId'];
+    $n = (int)$li['qty'] * max(1, (int)($li['pieces'] ?? 1));   // bandanas, not packs
+    if (!isset($per[$k])) $per[$k] = ['name'=>$li['name'],'emoji'=>$li['emoji'],'color'=>$li['color'] ?? null,'units'=>0,'revenue'=>0];
+    $per[$k]['units'] += $n; $per[$k]['revenue'] += $pkr($o, $li['lineTotal']);
+    $units += $n;
   }
   $top = array_values($per); usort($top, fn($a,$b)=>$b['units']-$a['units']);
 
@@ -959,37 +1172,55 @@ function analytics(): array {
     $start = strtotime("today -$i days")*1000; $end=$start+86400000;
     $dayOrders = array_filter($active, fn($o)=>$o['createdAt']>=$start && $o['createdAt']<$end);
     $days[] = ['label'=>date('M j', (int)($start/1000)),'orders'=>count($dayOrders),
-      'revenue'=>array_sum(array_map(fn($o)=>$o['total'],$dayOrders))];
+      'revenue'=>array_sum(array_map(fn($o)=>$pkr($o, $o['total']),$dayOrders))];
   }
-  $cities = [];
-  foreach ($active as $o) { $c=$o['customer']['city']??'Unknown'; $cities[$c]=($cities[$c]??0)+1; }
-  arsort($cities);
-  $cityBreakdown = []; foreach ($cities as $city=>$n) $cityBreakdown[]=['city'=>$city,'count'=>$n];
+
+  // Where orders are going: the city inside Pakistan, the country outside it.
+  $places = []; $countries = [];
+  foreach ($active as $o) {
+    $c = $o['customer'];
+    $intl = !is_domestic((string)($c['country'] ?? 'PK'));
+    $place = $intl ? ($c['countryName'] ?? $c['country'] ?? 'Abroad') : (($c['city'] ?? '') ?: 'Unknown');
+    $places[$place] = ($places[$place] ?? 0) + 1;
+    $cn = $c['countryName'] ?? 'Pakistan';
+    $countries[$cn] = ($countries[$cn] ?? 0) + 1;
+  }
+  arsort($places); arsort($countries);
+  $cityBreakdown = []; foreach ($places as $city=>$n) $cityBreakdown[] = ['city'=>$city,'count'=>$n];
+  $countryBreakdown = []; foreach ($countries as $cn=>$n) $countryBreakdown[] = ['country'=>$cn,'count'=>$n];
 
   $statusCounts = [];
   foreach ($orders as $o) $statusCounts[$o['status']]=($statusCounts[$o['status']]??0)+1;
 
   $lowStock = [];
-  foreach ($products as $p) if ($p['active'] && $p['stock']<=10) $lowStock[]=['id'=>$p['id'],'name'=>$p['name'],'stock'=>$p['stock'],'emoji'=>$p['emoji']];
+  foreach ($products as $p) if ($p['active'] && $p['stock']<=10) $lowStock[]=['id'=>$p['id'],'name'=>$p['name'],'stock'=>$p['stock'],'emoji'=>$p['emoji'],'color'=>$p['color'],'ink'=>$p['ink']];
   usort($lowStock, fn($a,$b)=>$a['stock']-$b['stock']);
 
-  $units = 0; foreach ($active as $o) foreach ($o['items'] as $li) $units+=$li['qty'];
   $activeProducts = array_filter($products, fn($p)=>$p['active']);
+  $intlOrders = count(array_filter($orders, fn($o)=>($o['currency'] ?? 'PKR')==='USD'));
+  $bundleOrders = count(array_filter($active, fn($o)=>!empty($o['discount'])));
+  $subs = 0; $unread = 0;
+  try { $subs = (int) db()->query("SELECT COUNT(*) c FROM subscribers")->fetch()['c']; } catch (Throwable $e) {}
+  try { $unread = (int) db()->query("SELECT COUNT(*) c FROM messages WHERE status='new'")->fetch()['c']; } catch (Throwable $e) {}
   $vs = visit_stats();
 
   return [
     'visits'=>$vs,
     'totals'=>[
-      'revenue'=>$revenue,'orders'=>count($orders),'activeOrders'=>count($active),
-      'cancelledOrders'=>count($orders)-count($active),'deliveredOrders'=>count($delivered),
+      'revenue'=>$revenue,'revenuePkr'=>$revenuePkr,'revenueUsd'=>$revenueUsd,'usdRate'=>$rate,
+      'orders'=>count($orders),'activeOrders'=>count($active),'intlOrders'=>$intlOrders,
+      'bundleOrders'=>$bundleOrders,'subscribers'=>$subs,'unreadMessages'=>$unread,
+      'awaitingPayment'=>count($awaiting),'awaitingPaymentUsd'=>$awaitingUsd,
+      'cancelledOrders'=>count(array_filter($orders, fn($o)=>$o['status']==='Cancelled')),
+      'deliveredOrders'=>count($delivered),
       'customers'=>count($users),'unitsSold'=>$units,
       'avgOrderValue'=>count($active)?(int)round($revenue/count($active)):0,
       'products'=>count($activeProducts),
       'outOfStock'=>count(array_filter($products, fn($p)=>$p['active']&&$p['stock']===0)),
-      'pendingOrders'=>count(array_filter($orders, fn($o)=>in_array($o['status'],['Pending','Confirmed','Baking'],true))),
+      'pendingOrders'=>count(array_filter($orders, fn($o)=>in_array($o['status'], open_statuses(), true))),
       'pageViews'=>$vs['totalViews'], 'visitors'=>$vs['uniqueVisitors'], 'viewsToday'=>$vs['viewsToday'], 'visitorsToday'=>$vs['visitorsToday'],
     ],
-    'topProducts'=>$top,'salesByDay'=>$days,'cityBreakdown'=>$cityBreakdown,
+    'topProducts'=>$top,'salesByDay'=>$days,'cityBreakdown'=>$cityBreakdown,'countryBreakdown'=>$countryBreakdown,
     'statusCounts'=>(object)$statusCounts,'lowStock'=>$lowStock,
   ];
 }
