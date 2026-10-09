@@ -253,6 +253,8 @@ function orderDone(o, d){
         : '<p>We’ll send a secure payment link to <strong>'+esc(d.email)+'</strong> and to your WhatsApp, usually within 24 hours. Nothing is charged until you use it.</p>')
       +'</div>';
   }
+  var h = document.querySelector('.sec-head h1'); if(h) h.textContent = intl ? 'Reserved for you.' : 'It’s on its way.';
+  var sl = document.querySelector('.sec-head [data-ship]'); if(sl) sl.hidden = true;
   var art = (o.items||[]).slice(0,3).map(function(li){ return '<div class="bn" style="width:72px">'+bandanaSVG(li.color, li.ink)+'</div>'; }).join('');
   document.getElementById('root').innerHTML = '<div class="done"><div class="trio" style="display:flex;margin-bottom:8px">'+art+'</div>'
     +'<p class="eyebrow">'+(intl ? 'Order received' : 'Order placed')+'</p><h2 class="h2">Thank you, '+esc(d.name.split(' ')[0])+'.</h2>'

@@ -207,9 +207,13 @@ const WAYS = [
   ['Back pocket', 'Let one corner hang out of your back pocket.',
     ['Fold in half, then in half again.', 'Tuck the folded square into a back pocket.', 'Pull one corner out so the print shows.']],
 ];
+const foldArt = () => `<div class="fold-demo" aria-hidden="true"><div class="bn">${S.bandanaSVG('#C3201B', '#F3EDE0')}</div><span class="fd-arrow">→</span><div class="fd-tri"><div class="bn">${S.bandanaSVG('#C3201B', '#F3EDE0')}</div></div></div>`;
 const wear = (detailed = false) => `<section id="wear" class="dark" aria-labelledby="wearTitle"><div class="wrap sec wear">
-  <div class="wear-intro"><p class="eyebrow">How to wear</p><h2 class="h2" id="wearTitle">One bandana,<br>five ways.</h2>
-    <p>Not sure how to style it? Start with one of these.</p>${detailed ? '' : '<p><a class="link" href="/how-to-wear">Step-by-step guide</a></p>'}</div>
+  <div class="wear-intro">${detailed
+    ? `<p class="eyebrow">Start here</p><h2 class="h2" id="wearTitle">Fold it corner<br>to corner.</h2>
+       <p>Lay it flat, print side down, and bring one corner to the opposite one. That triangle is where almost every style begins.</p>${foldArt()}`
+    : `<p class="eyebrow">How to wear</p><h2 class="h2" id="wearTitle">One bandana,<br>five ways.</h2>
+       <p>Not sure how to style it? Start with one of these.</p><p><a class="link" href="/how-to-wear">Step-by-step guide</a></p>`}</div>
   <ol class="ways">${WAYS.map(([h, p, steps], i) => `<li class="way"><span class="n">0${i + 1}</span><h3>${h}</h3><p>${p}</p>${detailed ? `<ol>${steps.map((s) => `<li>${s}</li>`).join('')}</ol>` : ''}</li>`).join('')}</ol>
 </div></section>`;
 const perks = () => `<div class="perks">
@@ -222,7 +226,7 @@ const DECOR = [['#FF6A13', '#FFFFFF'], ['#FF2E88', '#FFFFFF'], ['#1D2B5C', '#EFE
 let decorI = 0;
 const pageHead = (eyebrow, title, lede, crumbs) => { const [c1, i1] = DECOR[decorI++ % DECOR.length]; const [c2, i2] = DECOR[decorI % DECOR.length]; return `<section class="dark ph"><div class="ph-art" aria-hidden="true"><div class="float pa1"><div class="bn">${S.bandanaSVG(c1, i1)}</div></div><div class="float pa2"><div class="bn">${S.bandanaSVG(c2, i2)}</div></div></div><div class="wrap page-head">
   ${crumbs ? `<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><span>${crumbs}</span></nav>` : ''}
-  <p class="eyebrow">${eyebrow}</p><h1 class="h1 ph-title">${title}</h1>${lede ? `<p class="lede">${lede}</p>` : ''}
+  ${eyebrow.replace(/<[^>]+>/g, '') === String(crumbs || '').replace(/<[^>]+>/g, '') ? '' : `<p class="eyebrow">${eyebrow}</p>`}<h1 class="h1 ph-title">${title}</h1>${lede ? `<p class="lede">${lede}</p>` : ''}
 </div></section>`; };
 
 /* ---------------- structured data ---------------- */
