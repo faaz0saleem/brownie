@@ -532,27 +532,32 @@ async function loadSettings() {
       <button class="btn-sm btn-save" style="margin-top:14px" onclick="saveSettings()">💾 Save settings</button>
     </div></div>
     <div class="panel" style="margin-top:20px">
-      <h3>📸 Home page banner photo</h3>
-      <div class="panel-sub">A photo of someone wearing a Fudgio bandana, shown at the top of the home page instead of the illustration. Portrait works best (about 5:6); it is cropped to an arch.</div>
+      <h3>📸 Photos of people wearing it</h3>
+      <div class="panel-sub">Real photos of someone wearing a Fudgio bandana. Each replaces an illustration on the home page. Portrait works best (about 5:6); they are cropped to an arch.</div>
       <div id="bannerBox" style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap"></div>
     </div>`;
   loadBanner();
 }
+/* Site photos: the hero banner and the three "Made to be worn" looks. */
+const MEDIA = [['banner', 'Home page banner', 'Top of the home page'], ['look1', 'Look 1', 'On the head'], ['look2', 'Look 2', 'Round the neck'], ['look3', 'Look 3', 'As a headband']];
 async function loadBanner() {
   const box = document.getElementById('bannerBox'); if (!box) return;
   const st = await (await fetch(API_BASE + '/storefront', { credentials: 'include' })).json().catch(() => ({}));
-  box.innerHTML = (st.bannerUrl ? `<img src="${esc(IMGURL(st.bannerUrl))}" alt="" style="width:180px;aspect-ratio:5/6;object-fit:cover;border-radius:90px 90px 8px 8px">` : '<div class="muted">No photo yet — the illustration is showing.</div>')
-    + `<label class="btn-sm btn-save upload-label">📷 ${st.bannerUrl ? 'Replace' : 'Upload'} photo<input type="file" accept="image/*" style="display:none" onchange="uploadBanner(this)"></label>`
-    + (st.bannerUrl ? '<button class="btn-sm btn-toggle" onclick="removeBanner()">🗑 Remove</button>' : '');
+  const media = st.media || {};
+  box.innerHTML = MEDIA.map(([slot, name, where]) => `<div class="media-slot">
+      ${media[slot] ? `<img src="${esc(IMGURL(media[slot]))}" alt="">` : '<div class="media-empty">Illustration showing</div>'}
+      <b>${name}</b><span class="muted" style="font-size:.8rem">${where}</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><label class="btn-sm btn-save upload-label">📷 ${media[slot] ? 'Replace' : 'Upload'}<input type="file" accept="image/*" style="display:none" onchange="uploadMedia('${slot}', this)"></label>
+      ${media[slot] ? `<button class="btn-sm btn-toggle" onclick="removeMedia('${slot}')">🗑</button>` : ''}</div></div>`).join('');
 }
-async function uploadBanner(input) {
+async function uploadMedia(slot, input) {
   const f = input.files && input.files[0]; if (!f) return;
   const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
-  const res = await api('/banner', { method: 'PUT', body: JSON.stringify({ imageUrl: await downscale(dataUrl, 1600) }) });
-  toast(res.ok ? 'Banner photo is live ✓' : ((await res.json().catch(() => ({}))).error || 'Upload failed'));
+  const res = await api('/media/' + slot, { method: 'PUT', body: JSON.stringify({ imageUrl: await downscale(dataUrl, 1600) }) });
+  toast(res.ok ? 'Photo is live on the shop ✓' : ((await res.json().catch(() => ({}))).error || 'Upload failed'));
   loadBanner();
 }
-async function removeBanner() { if (!confirm('Remove the banner photo? The illustration comes back.')) return; await api('/banner', { method: 'DELETE' }); toast('Banner photo removed'); loadBanner(); }
+async function removeMedia(slot) { if (!confirm('Remove this photo? The illustration comes back.')) return; await api('/media/' + slot, { method: 'DELETE' }); toast('Photo removed'); loadBanner(); }
 async function saveSettings() {
   const v = (id) => document.getElementById(id).value;
   const body = { deliveryFee: v('setFee'), freeDeliveryOver: v('setFree'), daysPk: v('setDaysPk'),

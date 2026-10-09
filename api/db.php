@@ -912,21 +912,29 @@ function review_set_status(string $id, string $status): bool {
 }
 function review_delete(string $id): bool { $st = db()->prepare("DELETE FROM reviews WHERE id=?"); $st->execute([$id]); return $st->rowCount() > 0; }
 
-/* ---------------- banner photo ----------------
-   One photo for the top of the home page — someone wearing a Fudgio bandana.
-   Kept as its own settings row so the store settings stay small; served as
-   an image from /api/banner?v=<key>. */
-function banner_key(): string { return meta_get(db(), 'banner_key'); }
-function banner_set(?string $data): void {
+/* ---------------- site photos ----------------
+   Photos for the places that show people rather than a product: the home
+   page banner and the three "Made to be worn" looks. Each is its own
+   settings row so the store settings stay small, served as an image from
+   /api/media/<slot>?v=<key>. */
+function media_slots(): array { return ['banner', 'look1', 'look2', 'look3']; }
+function media_key(string $slot): string { return meta_get(db(), $slot . '_key'); }
+function media_set(string $slot, ?string $data): void {
   $d = db_driver();
-  meta_set(db(), $d, 'banner', $data ?? '');
-  meta_set(db(), $d, 'banner_key', $data ? substr(md5($data), 0, 10) : '');
+  meta_set(db(), $d, $slot, $data ?? '');
+  meta_set(db(), $d, $slot . '_key', $data ? substr(md5($data), 0, 10) : '');
 }
-function banner_bytes(): ?array {
-  $v = meta_get(db(), 'banner');
+function media_bytes(string $slot): ?array {
+  $v = meta_get(db(), $slot);
   if (!preg_match('#^data:(image/(?:png|jpeg|jpg|webp));base64,(.*)$#s', $v, $m)) return null;
   $bin = base64_decode(preg_replace('/\s+/', '', $m[2]), true);
   return $bin === false ? null : ['type' => $m[1] === 'image/jpg' ? 'image/jpeg' : $m[1], 'bytes' => $bin];
+}
+/** slot => public URL, for the slots that have a photo. */
+function media_urls(): array {
+  $out = [];
+  foreach (media_slots() as $slot) { $k = media_key($slot); if ($k !== '') $out[$slot] = '/api/media/' . $slot . '?v=' . $k; }
+  return $out;
 }
 
 /* ---------------- newsletter ---------------- */

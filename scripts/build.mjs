@@ -230,7 +230,7 @@ const lookbook = (heading = 'h2') => `<section class="paper look" aria-labelledb
   <div class="sec-head"><div class="stack"><p class="eyebrow">Worn by you</p><${heading} class="h2" id="lookTitle">Made to be worn.</${heading}></div>
     <p>One square, endless looks. Tie it on, knot it at the neck, or roll it into a headband — every colour works every way.</p></div>
   <div class="looks">${LOOKS.map((l, i) => { const p = S.getProduct(l.slug) || P[i]; return `<a class="look-card reveal-me" href="${p.path}">
-    <div class="look-art">${S.personSVG({ ...l, color: p.color, ink: p.ink, idSuffix: 'l' + i, title: 'Someone wearing the ' + p.name + ' bandana ' + l.label.toLowerCase() })}</div>
+    <div class="look-art" data-look="look${i + 1}" data-alt="Someone wearing a Fudgio bandana ${l.label.toLowerCase()}">${S.personSVG({ ...l, color: p.color, ink: p.ink, idSuffix: 'l' + i, title: 'Someone wearing the ' + p.name + ' bandana ' + l.label.toLowerCase() })}</div>
     <div class="look-cap"><span class="mono">0${i + 1}</span><b>${l.label}</b><span>${e(p.name)} ${ARROW}</span></div></a>`; }).join('')}</div>
 </div></section>`;
 const wear = (detailed = false) => `<section id="wear" class="dark" aria-labelledby="wearTitle"><div class="wrap sec wear">

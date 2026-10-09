@@ -111,7 +111,9 @@ try {
       'instagram'        => (string)($s['instagram'] ?? ''),
       'whatsapp'         => (string)($s['whatsapp'] ?? ''),
       // A real photo for the top of the home page, if the shop has one.
-      'bannerUrl'        => banner_key() !== '' ? '/api/banner?v=' . banner_key() : '',
+      'bannerUrl'        => media_urls()['banner'] ?? '',
+      // Photos for the hero and the three "Made to be worn" looks.
+      'media'            => (object) media_urls(),
     ]);
   }
 
@@ -288,10 +290,13 @@ try {
     err('Not found',404);
   }
 
-  // ---- the home page banner photo ----
-  if ($path==='banner') {
+  // ---- site photos: /api/media/<banner|look1|look2|look3> ----
+  // (/api/banner is the same as /api/media/banner, kept for older pages.)
+  if ($path==='banner' || ($seg[0]==='media' && count($seg)===2)) {
+    $slot = $path==='banner' ? 'banner' : $seg[1];
+    if (!in_array($slot, media_slots(), true)) err('Not found', 404);
     if ($method==='GET') {
-      $img = banner_bytes();
+      $img = media_bytes($slot);
       if (!$img) { http_response_code(404); header('Content-Type: text/plain'); echo 'Not found'; exit; }
       header('Content-Type: ' . $img['type']);
       header('Cache-Control: public, max-age=31536000, immutable');
@@ -303,9 +308,9 @@ try {
       $img = body(8000000)['imageUrl'] ?? '';
       if (!is_string($img) || !preg_match('#^data:image/(png|jpe?g|webp);base64,[A-Za-z0-9+/=\s]+$#', $img)) err('Please upload a JPG, PNG or WebP photo.');
       if (strlen($img) > 6000000) err('Image too large.');
-      banner_set($img); out(['ok'=>true, 'bannerUrl'=>'/api/banner?v=' . banner_key()]);
+      media_set($slot, $img); out(['ok'=>true, 'url'=>media_urls()[$slot] ?? '']);
     }
-    if ($method==='DELETE') { banner_set(null); out(['ok'=>true]); }
+    if ($method==='DELETE') { media_set($slot, null); out(['ok'=>true]); }
   }
 
   // ---- product photos, as real image files ----

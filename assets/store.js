@@ -486,6 +486,7 @@ function applySettings(d){
   FUDGIO.bundlePct    = n(d.bundlePct, FUDGIO.bundlePct);
   ['daysPk','daysIntl','instagram','whatsapp','announcement','intlPaymentLink','bannerUrl'].forEach(function(k){ if(typeof d[k] === 'string' && (d[k] || k==='announcement' || k==='instagram' || k==='whatsapp' || k==='intlPaymentLink' || k==='bannerUrl')) FUDGIO[k] = d[k]; });
   if(typeof d.intlEnabled === 'boolean') FUDGIO.intlEnabled = d.intlEnabled;
+  if(d.media && typeof d.media === 'object') FUDGIO.media = d.media;
   FUDGIO.storeOpen = d.storeOpen !== false;
   FUDGIO.sms = !!d.smsVerification;
   if(!FUDGIO.intlEnabled && REGION === 'INTL'){ REGION = 'PK'; }
@@ -594,6 +595,11 @@ function paintBits(){
       el.innerHTML = '<img src="'+esc(FUDGIO.bannerUrl)+'" alt="Someone wearing a Fudgio bandana" fetchpriority="high"/>';
       el.classList.add('is-photo');
     }
+  });
+  // Real photos for the "Made to be worn" looks replace the illustrations.
+  set('[data-look]', function(el){
+    var url = FUDGIO.media && FUDGIO.media[el.getAttribute('data-look')], img = el.querySelector('img');
+    if(url && (!img || img.getAttribute('src') !== url)){ el.innerHTML = '<img src="'+esc(url)+'" alt="'+esc(el.getAttribute('data-alt') || '')+'" loading="lazy"/>'; el.classList.add('is-photo'); }
   });
   set('[data-builder]', function(el){ el.innerHTML = builderHTML(); _pickNew = -1; });
   set('[data-sticker]', function(el){ var t = 'Buy any '+FUDGIO.bundleQty+' · save '+FUDGIO.bundlePct+'% · '; el.textContent = t+t; });

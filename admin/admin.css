@@ -221,3 +221,6 @@ a.mini{text-decoration:none;display:inline-flex;align-items:center}
 .ph-thumb.main .ph-tools span{color:#ffb27a}
 .ph-add{width:56px;height:56px;border-radius:8px;border:2px dashed rgba(255,255,255,.3);display:grid;place-items:center;font-size:22px;color:rgba(255,255,255,.7);cursor:pointer}
 .ph-add:hover{border-color:#ff6a13;color:#ff6a13}
+.media-slot{display:flex;flex-direction:column;gap:6px;width:170px}
+.media-slot img,.media-empty{width:170px;aspect-ratio:5/6;object-fit:cover;border-radius:85px 85px 8px 8px;display:block}
+.media-empty{display:grid;place-items:center;border:2px dashed rgba(255,255,255,.2);color:rgba(255,255,255,.5);font-size:.8rem;text-align:center;padding:10px}
