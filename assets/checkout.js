@@ -117,14 +117,31 @@ function applyCountry(){
   var en=document.getElementById('emailNote');
   if(en) en.textContent = c && c!=='PK' ? 'Your payment link is sent here.' : 'For your order confirmation.';
   var ph=document.getElementById('fPhone'); if(ph) ph.placeholder = (c==='PK'||!c) ? '0300 1234567' : '+44 7700 900123';
-  var btn=document.getElementById('place');
-  if(btn) btn.textContent = needsSms() ? 'Continue' : (domestic() ? 'Place order — pay on delivery' : 'Place order — pay by link');
+  labelPlace();
   renderSteps(1);
   refreshSummary();
 }
+/* The total on the button itself: on a phone the summary is below the form. */
+function labelPlace(){
+  var btn=document.getElementById('place'); if(!btn || btn.getAttribute('aria-busy')) return;
+  btn.textContent = needsSms() ? 'Continue · '+money(cartTotal()) : (domestic() ? 'Place order · '+money(cartTotal())+' on delivery' : 'Place order · '+money(cartTotal())+' by payment link');
+}
 function countryChanged(){ showErr(''); applyCountry(); }
 function primaryAction(){ needsSms() ? continueToVerify() : place(); }
-function showDetails(){ document.getElementById('stepPanel').innerHTML = detailsHTML(); loadCaptcha(); applyCountry(); }
+function showDetails(){ document.getElementById('stepPanel').innerHTML = blockerHTML() + detailsHTML(); loadCaptcha(); applyCountry(); paintBlocker(); }
+/* Say up front if the order can't go through — a sold-out colour in the bag,
+   or the shop closed — instead of after the whole form is filled in. */
+function blocker(){
+  if(!FUDGIO.storeOpen) return 'We’re not taking orders right now. Your bag is saved — please check back soon.';
+  if(getCart().some(shortOf)) return 'Something in your bag has sold out or is no longer available. Fix your bag, then come back to finish.';
+  return '';
+}
+function blockerHTML(){ return '<div class="notice orange-n" id="blocker" style="margin-bottom:18px" hidden><span class="ico">!</span><div><b>Hold on.</b> <span class="msg"></span> <a class="link" href="/cart">Go to your bag</a></div></div>'; }
+function paintBlocker(){
+  var b = document.getElementById('blocker'), msg = blocker(); if(!b) return;
+  b.hidden = !msg; b.querySelector('.msg').textContent = msg;
+  var btn = document.getElementById('place'); if(btn) btn.disabled = !!msg;
+}
 
 /** Reads and validates the form. Returns the details, or null after showing why. */
 function readDetails(){
@@ -148,9 +165,9 @@ function readCaptcha(){
 function continueToVerify(){
   var d = readDetails(); if(!d) return;
   var answer = readCaptcha(); if(answer===null) return;
-  var btn=document.getElementById('place'); btn.disabled=true; btn.textContent='Sending code…';
+  var btn=document.getElementById('place'); btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.textContent='Sending code…';
   api('POST','/api/verify/phone/send',{phone:d.phone, captchaId:CAPTCHA_ID, captchaAnswer:answer}, function(ok, r){
-    btn.disabled=false; btn.textContent='Continue';
+    btn.disabled=false; btn.removeAttribute('aria-busy'); labelPlace();
     if(!ok){ showErr(r.error || 'Could not send the code. Please try again.'); loadCaptcha(); return; }
     DETAILS = d; showVerify();
   });
@@ -204,15 +221,15 @@ function place(){
   var viaSms = !!DETAILS && needsSms();
   var d = viaSms ? DETAILS : readDetails();
   if(!d) return;
-  if(getCart().some(shortOf)){ showErr('Something in your bag has sold out. Please check your bag.'); return; }
+  if(blocker()){ showErr(blocker()); return; }
   var body = { items: getCart().map(function(i){ return {productId:i.id, size:i.size, qty:i.qty}; }), customer: d };
   if(!viaSms){ var answer = readCaptcha(); if(answer===null) return; body.captchaId = CAPTCHA_ID; body.captchaAnswer = answer; }
   var btn = document.getElementById(viaSms ? 'confirmBtn' : 'place'), label = btn ? btn.textContent : '';
-  if(btn){ btn.disabled=true; btn.textContent='Placing order…'; }
+  if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.textContent='Placing order…'; }
   api('POST','/api/orders', body, function(ok, r){
     if(!ok){
       showErr(r.error || 'Could not place the order. Please try again.');
-      if(btn){ btn.disabled=false; btn.textContent=label; }
+      if(btn){ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.textContent=label; }
       if(!viaSms) loadCaptcha();   // that attempt used up the challenge
       return;
     }
@@ -275,4 +292,6 @@ onChange(function(){
     return;
   }
   refreshSummary();
+  labelPlace();
+  paintBlocker();
 });

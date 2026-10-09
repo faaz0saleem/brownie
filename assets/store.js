@@ -191,10 +191,24 @@ function swatchesHTML(cur){
   }).join('');
 }
 
+/* The big picture on a product page: the photo if there is one, otherwise
+   the drawing three ways — flat, folded into a triangle, and close up. */
+function stageHTML(p){
+  if(p.image) return artHTML(p, { alt: true, eager: true });
+  var svg = bandanaSVG(p.color, p.ink, { title: p.name + ' bandana' });
+  return '<div class="v v-flat"><div class="bn">'+svg+'</div></div>'
+    +'<div class="v v-fold" aria-hidden="true"><div class="bn">'+bandanaSVG(p.color, p.ink)+'</div></div>'
+    +'<div class="v v-zoom" aria-hidden="true"><div class="bn">'+bandanaSVG(p.color, p.ink)+'</div></div>';
+}
 function productPageHTML(p){
   var details = (p.details && p.details.length ? p.details : ['100% cotton','55 × 55 cm (22")','Hemmed edges','Colourfast print','Machine washable']);
   return '<div class="pd" data-pd="'+esc(p.slug)+'">'
-    +'<div class="pd-gallery"><div class="pd-stage'+(p.image?' photo':'')+'" id="pdStage">'+artHTML(p, { alt: true, eager: true })+'</div></div>'
+    +'<div class="pd-gallery"><div class="pd-stage'+(p.image?' photo':'')+'" id="pdStage" data-view="flat">'+stageHTML(p)+'</div>'
+    +(p.image ? '' : '<div class="pd-views" role="tablist" aria-label="Views">'
+      +[['flat','Flat'],['fold','Folded'],['zoom','Close-up']].map(function(v, i){
+        return '<button type="button" role="tab" class="view-btn'+(i?'':' on')+'" data-view="'+v[0]+'" aria-selected="'+(i?'false':'true')+'"><span class="vt v-'+v[0]+'"><span class="bn">'+bandanaSVG(p.color, p.ink)+'</span></span>'+v[1]+'</button>';
+      }).join('')+'</div>')
+    +'</div>'
     +'<div class="pd-info">'
       +'<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/shop">Shop</a><span class="sep">/</span><span>'+esc(p.name)+'</span></nav>'
       +'<div style="display:flex;flex-direction:column;gap:14px"><p class="eyebrow">Printed bandana · 55 cm square</p><h1 class="h1">'+esc(p.name)+'</h1></div>'
@@ -253,7 +267,9 @@ function dealMeterHTML(){
   }
   return '<div class="pips" aria-hidden="true">'+pips+'</div><div class="txt">'+esc(dealLine())+'<small>'
     +(dealLeft() ? 'Any colours. Taken off automatically in your bag.' : 'Applied to everything in your bag.')+'</small></div>'
-    +'<a class="btn btn-dark btn-sm" href="/cart" data-open-bag>View bag</a>';
+    +(HAS_DOM && location.pathname.replace(/\/$/,'') === '/cart'
+      ? (dealLeft() ? '<a class="btn btn-dark btn-sm" href="/shop">Add a colour</a>' : '')
+      : '<a class="btn btn-dark btn-sm" href="/cart" data-open-bag>View bag</a>');
 }
 
 /* ---------------- everything below needs a page ---------------- */
@@ -323,7 +339,15 @@ function renderDrawer(){
     document.getElementById('dwFoot').innerHTML = '';
     return;
   }
-  document.getElementById('dwBody').innerHTML = bagLinesHTML();
+  var left = FUDGIO.bundlePct ? dealLeft() : 0, upsell = '';
+  if(left){
+    var inBag = {}; cart.forEach(function(i){ inBag[i.id] = 1; });
+    var ideas = visibleProducts().filter(function(p){ return !inBag[p.slug] && inStock(p); }).slice(0, 4);
+    if(ideas.length) upsell = '<div class="upsell"><p class="lbl">Add '+left+' more to save '+FUDGIO.bundlePct+'%</p><div class="ideas">'
+      + ideas.map(function(p){ return '<button type="button" class="idea" data-add="'+esc(p.slug)+'" aria-label="Add '+esc(p.name)+'"><span class="bn">'+bandanaSVG(p.color, p.ink)+'</span><span>'+esc(p.name)+'</span><b aria-hidden="true">+</b></button>'; }).join('')
+      + '</div></div>';
+  }
+  document.getElementById('dwBody').innerHTML = bagLinesHTML() + upsell;
   var blocked = cart.some(shortOf), nudge = nudgeText();
   document.getElementById('dwFoot').innerHTML = totalsHTML()
     + (nudge ? '<p class="pay-note" style="color:var(--pink-2)">'+esc(nudge)+'</p>' : '')
@@ -383,6 +407,54 @@ function applySettings(d){
 }
 function whenLive(fn){ if(_ready.catalog && _ready.settings) fn(); else onChange(function once(){ if(_ready.catalog && _ready.settings && !once.done){ once.done = true; fn(); } }); }
 
+/* ---- the bar at the very top: the admin's message, or a few that take turns ---- */
+var ANN = [], _annI = 0;
+function announcements(){
+  if(FUDGIO.announcement) return [FUDGIO.announcement];
+  var list = [];
+  if(isPK()){
+    list.push(FUDGIO.deliveryFee && FUDGIO.freeOver ? 'Free delivery in Pakistan over '+money(FUDGIO.freeOver,'PK') : 'Free delivery across Pakistan');
+    list.push('Cash on delivery · pay when it arrives');
+  } else {
+    list.push(FUDGIO.intlShipping ? 'Shipping worldwide · '+money(FUDGIO.intlShipping,'INTL')+' flat' : 'Free shipping worldwide');
+  }
+  if(FUDGIO.bundlePct) list.push('Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'% · mix any colours');
+  list.push('100% cotton · 55 cm square · '+(isPK() ? FUDGIO.daysPk : FUDGIO.daysIntl)+' day delivery');
+  return list;
+}
+function showAnnouncement(a, fade){
+  if(!ANN.length) return;
+  var t = ANN[_annI % ANN.length];
+  if(a.textContent === t) return;
+  if(!fade || REDUCE){ a.textContent = t; return; }
+  a.classList.add('swap-out');
+  setTimeout(function(){ a.textContent = t; a.classList.remove('swap-out'); }, 280);
+}
+
+/* ---- "pick your three": fill the slots, add them all at once ---- */
+var PICKS = [], _pickNew = -1;
+function builderHTML(){
+  var q = Math.max(2, FUDGIO.bundleQty|0), n = PICKS.length, slots = '';
+  for(var i=0;i<q;i++){
+    var p = PICKS[i] && getProduct(PICKS[i]);
+    slots += p ? '<button type="button" class="slot on'+(i===_pickNew?' pop':'')+'" data-unpick="'+i+'" aria-label="Remove '+esc(p.name)+'"><div class="bn">'+bandanaSVG(p.color, p.ink)+'</div><span class="x" aria-hidden="true">×</span></button>'
+               : '<span class="slot" aria-hidden="true"><b>'+(i+1)+'</b></span>';
+  }
+  var sws = visibleProducts().filter(function(p){ return inStock(p, PICKS.filter(function(x){ return x===p.slug; }).length + 1); }).map(function(p){
+    return '<button type="button" class="sw-b" data-pick="'+esc(p.slug)+'" style="background:'+esc(p.color)+'" title="'+esc(p.name)+'" aria-label="Add '+esc(p.name)+' to your three"'+(n>=q?' disabled':'')+'></button>';
+  }).join('');
+  var sum = 0; PICKS.forEach(function(sl){ var p = getProduct(sl); if(p) sum += unitPrice(p); });
+  var off = n >= q ? Math.round(sum * FUDGIO.bundlePct / 100) : 0;
+  var line = !n ? 'Tap a colour to fill a slot. Repeats are fine.'
+    : (n < q ? (q-n)+' more to go · '+money(sum)+' so far'
+             : '<s>'+money(sum)+'</s> <b>'+money(sum-off)+'</b> · you save '+money(off)+'<br><span class="hint">Tap a bandana to swap it.</span>');
+  // Once every slot is full the colour dots step aside; tap a slot to swap one out.
+  return '<div class="slots">'+slots+'</div>'+(n < q ? '<div class="pick" role="group" aria-label="Colours">'+sws+'</div>' : '')
+    +'<p class="sum" aria-live="polite">'+line+'</p>'
+    +(n >= q ? '<button type="button" class="btn btn-dark" data-pick-add>Add all '+q+' to bag <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>'
+             : '<a class="btn btn-dark" href="/shop">Or browse every colour</a>');
+}
+
 /* ---- page widgets: every one redraws from state on emit() ---- */
 function paintHeader(){
   var c = document.getElementById('cartCount');
@@ -390,13 +462,7 @@ function paintHeader(){
   var b = document.getElementById('curBtn');
   if(b){ b.hidden = !FUDGIO.intlEnabled; b.textContent = isPK() ? 'PKR ₨' : 'USD $'; b.title = isPK() ? 'Prices in rupees. Switch to US dollars' : 'Prices in US dollars. Switch to rupees'; }
   var a = document.getElementById('announce');
-  if(a){
-    var txt = FUDGIO.announcement || (isPK()
-      ? (FUDGIO.deliveryFee && FUDGIO.freeOver ? 'Free delivery in Pakistan over '+money(FUDGIO.freeOver,'PK') : 'Free delivery across Pakistan')+' · Cash on delivery · Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%'
-      : 'Shipping worldwide for '+money(FUDGIO.intlShipping,'INTL')+' flat · Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%');
-    if(!FUDGIO.bundlePct && !FUDGIO.announcement) txt = txt.replace(/ · Buy any .*$/, '');
-    a.textContent = txt;
-  }
+  if(a){ ANN = announcements(); showAnnouncement(a, false); }
   var cl = document.getElementById('closedNote');
   if(!FUDGIO.storeOpen && !cl && a){ cl = document.createElement('div'); cl.id='closedNote'; cl.className='closed-note'; cl.textContent='We are not taking orders right now — browse away, and check back soon.'; a.parentNode.insertBefore(cl, a.nextSibling); }
   Array.prototype.forEach.call(document.querySelectorAll('[data-ig]'), function(el){
@@ -409,6 +475,11 @@ function paintHeader(){
 function paintBits(){
   var set = function(sel, fn){ Array.prototype.forEach.call(document.querySelectorAll(sel), fn); };
   set('[data-from]', function(el){ el.textContent = 'From '+money(fromPrice()); });
+  // "8 colours" stays true when the admin adds or hides one.
+  var n = visibleProducts().length;
+  var WORDS = ['no','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty'];
+  set('[data-count]', function(el){ el.textContent = n; });
+  set('[data-count-word]', function(el){ el.textContent = WORDS[n] || n; });
   set('[data-price-one]', function(el){ el.textContent = money(fromPrice()); });
   set('[data-pct]', function(el){ el.textContent = FUDGIO.bundlePct; });
   set('[data-qty]', function(el){ el.textContent = FUDGIO.bundleQty; });
@@ -431,6 +502,7 @@ function paintBits(){
     var v = visibleProducts(), pick = [v[0], v[2], v[4]].filter(Boolean);
     el.innerHTML = pick.map(function(p){ return '<div class="bn">'+bandanaSVG(p.color, p.ink)+'</div>'; }).join('');
   });
+  set('[data-builder]', function(el){ el.innerHTML = builderHTML(); _pickNew = -1; });
   set('[data-sticker]', function(el){ var t = 'Buy any '+FUDGIO.bundleQty+' · save '+FUDGIO.bundlePct+'% · '; el.textContent = t+t; });
   set('[data-sticker-wrap]', function(el){ el.hidden = !FUDGIO.bundlePct; });
   set('[data-deal-meter]', function(el){
@@ -457,6 +529,12 @@ function initProduct(slug){
   root.addEventListener('click', function(e){
     var t = e.target.closest('button'); if(!t || !PD) return;
     var p = getProduct(PD.slug); if(!p) return;
+    if(t.classList.contains('view-btn')){
+      var v = t.getAttribute('data-view');
+      document.getElementById('pdStage').setAttribute('data-view', v);
+      Array.prototype.forEach.call(root.querySelectorAll('.view-btn'), function(b){ var on = b === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+      return;
+    }
     if(t.id === 'pdMinus'){ PD.qty = Math.max(1, PD.qty - 1); paintProduct(); }
     if(t.id === 'pdPlus'){ var max = Math.min(20, p.stock === undefined ? 20 : p.stock); if(PD.qty >= max){ toast('That is all we have of this colour'); return; } PD.qty++; paintProduct(); }
     if(t.id === 'pdAdd'){ var b0 = cartUnits(); if(addToCart(p, PD.qty)){ PD.qty = 1; celebrateIfUnlocked(b0); openBag(); } }
@@ -481,10 +559,14 @@ function paintProduct(){
     return;
   }
   if(!root.querySelector('.pd')) root.innerHTML = productPageHTML(p);
+  if(!p.isStatic) document.title = p.name + ' Bandana — 100% Cotton, 55 cm | Fudgio';
   var $ = function(id){ return document.getElementById(id); };
   var stage = $('pdStage');
   var hasPhoto = !!p.image, showsPhoto = !!stage.querySelector('img');
-  if(hasPhoto !== showsPhoto || (hasPhoto && stage.querySelector('img').getAttribute('src') !== p.image)){ stage.className = 'pd-stage'+(hasPhoto?' photo':''); stage.innerHTML = artHTML(p, { alt: true, eager: true }); }
+  if(hasPhoto !== showsPhoto || (hasPhoto && stage.querySelector('img').getAttribute('src') !== p.image)){
+    stage.className = 'pd-stage'+(hasPhoto?' photo':''); stage.innerHTML = stageHTML(p);
+    var vw = root.querySelector('.pd-views'); if(vw) vw.hidden = hasPhoto;
+  }
   var unit = unitPrice(p), out = !inStock(p);
   $('pdPrice').innerHTML = money(unit)+' <small>'+(isPK() ? 'Cash on delivery' : 'Paid before it ships · USD')+'</small>';
   var swh = swatchesHTML(p); if(PD.sw !== swh){ PD.sw = swh; $('pdSw').innerHTML = swh; }   // only redraw on a real change, so the pop-in plays once
@@ -588,6 +670,19 @@ if(HAS_DOM) (function(){
     document.addEventListener('click', function(e){
       var b = e.target.closest('#bagBtn,[data-open-bag]');
       if(b){ var p = location.pathname.replace(/\/$/,''); if(p !== '/cart' && p !== '/checkout'){ e.preventDefault(); openBag(); } return; }
+      var pk = e.target.closest('[data-pick],[data-unpick],[data-pick-add]');
+      if(pk){
+        var q = Math.max(2, FUDGIO.bundleQty|0);
+        if(pk.hasAttribute('data-pick') && PICKS.length < q){ PICKS.push(pk.getAttribute('data-pick')); _pickNew = PICKS.length - 1; }
+        if(pk.hasAttribute('data-unpick')) PICKS.splice(+pk.getAttribute('data-unpick'), 1);
+        if(pk.hasAttribute('data-pick-add')){
+          var before0 = cartUnits(), ok = true;
+          PICKS.forEach(function(sl){ var pp = getProduct(sl); if(pp && !addToCart(pp, 1)) ok = false; });
+          if(ok){ PICKS = []; celebrateIfUnlocked(before0); openBag(); }
+        }
+        emit();
+        return;
+      }
       var add = e.target.closest('[data-add]');
       if(add){
         var pr = getProduct(add.getAttribute('data-add'));
@@ -634,6 +729,32 @@ if(HAS_DOM) (function(){
         });
       });
     });
+
+    // the announcement bar takes turns between its messages
+    var annEl = document.getElementById('announce');
+    if(annEl && !REDUCE) setInterval(function(){ if(document.hidden || ANN.length < 2) return; _annI++; showAnnouncement(annEl, true); }, 4200);
+
+    // the hero's front bandana tries on every colour, until you pick one
+    var front = document.querySelector('.f3 .bn'), heroSw = document.querySelector('[data-hero-sw]');
+    if(front && heroSw){
+      var cycle = null, ci = 0;
+      var wear = function(p){
+        if(!p) return;
+        front.classList.remove('swap'); void front.offsetWidth;
+        front.innerHTML = bandanaSVG(p.color, p.ink); front.classList.add('swap');
+        Array.prototype.forEach.call(heroSw.querySelectorAll('button'), function(b){ b.classList.toggle('on', b.getAttribute('data-c') === p.slug); });
+        var nm = document.querySelector('[data-hero-name]'); if(nm) nm.textContent = p.name;
+      };
+      var paintSw = function(){
+        heroSw.innerHTML = visibleProducts().map(function(p){ return '<button type="button" data-c="'+esc(p.slug)+'" style="background:'+esc(p.color)+'" aria-label="Show '+esc(p.name)+'" title="'+esc(p.name)+'"></button>'; }).join('');
+        var cur = visibleProducts()[ci % Math.max(1, visibleProducts().length)];
+        if(cur){ var b = heroSw.querySelector('[data-c="'+cur.slug+'"]'); if(b) b.classList.add('on'); }
+      };
+      paintSw(); onChange(paintSw);
+      heroSw.addEventListener('click', function(e){ var b = e.target.closest('button'); if(!b) return; clearInterval(cycle); cycle = null; wear(getProduct(b.getAttribute('data-c'))); });
+      heroSw.addEventListener('mouseover', function(e){ var b = e.target.closest('button'); if(!b) return; clearInterval(cycle); cycle = null; wear(getProduct(b.getAttribute('data-c'))); });
+      if(!REDUCE) cycle = setInterval(function(){ if(document.hidden) return; var v = visibleProducts(); if(!v.length) return; ci = (ci + 1) % v.length; wear(v[ci]); }, 3200);
+    }
 
     // a thin progress line under the header as you scroll
     var prog = document.createElement('div'); prog.className = 'scroll-prog'; prog.setAttribute('aria-hidden','true');

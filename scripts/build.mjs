@@ -193,7 +193,7 @@ const band = () => `<section id="bundle" class="orange" aria-labelledby="bundleT
     <p>Mix any three colours. The discount is applied automatically at checkout.</p>
     <p class="sum" data-bundle-sum>${D.bundleQty} × ${rs(ONE.price)} = <s>${rs(full)}</s> ${rs(full - off)}</p>
   </div>
-  <div class="band-side"><div class="trio" data-trio aria-hidden="true"></div><a href="/shop" class="btn btn-dark">Pick your three ${ARROW}</a></div>
+  <div class="builder" data-builder><div class="trio" data-trio aria-hidden="true"></div><a href="/shop" class="btn btn-dark">Pick your three ${ARROW}</a></div>
 </div></section>`;
 const WAYS = [
   ['Head', 'Fold it into a triangle and tie it at the back of your head.',
@@ -218,10 +218,12 @@ const perks = () => `<div class="perks">
   <div class="perk"><span class="k">Fabric</span><b>100% cotton</b><p>Soft from the first wear, with hemmed edges that don’t fray.</p></div>
   <div class="perk"><span class="k">Easy</span><b>7-day exchanges</b><p>Wrong colour? Swap it while it’s unworn and unwashed.</p></div>
 </div>`;
-const pageHead = (eyebrow, title, lede, crumbs) => `<section class="dark"><div class="wrap page-head">
+const DECOR = [['#FF6A13', '#FFFFFF'], ['#FF2E88', '#FFFFFF'], ['#1D2B5C', '#EFECE6'], ['#D9A21B', '#141414'], ['#1F4B38', '#EFECE6'], ['#C3201B', '#F3EDE0'], ['#4B2447', '#EFECE6']];
+let decorI = 0;
+const pageHead = (eyebrow, title, lede, crumbs) => { const [c1, i1] = DECOR[decorI++ % DECOR.length]; const [c2, i2] = DECOR[decorI % DECOR.length]; return `<section class="dark ph"><div class="ph-art" aria-hidden="true"><div class="float pa1"><div class="bn">${S.bandanaSVG(c1, i1)}</div></div><div class="float pa2"><div class="bn">${S.bandanaSVG(c2, i2)}</div></div></div><div class="wrap page-head">
   ${crumbs ? `<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><span>${crumbs}</span></nav>` : ''}
-  <p class="eyebrow">${eyebrow}</p><h1 class="h1">${title}</h1>${lede ? `<p class="lede">${lede}</p>` : ''}
-</div></section>`;
+  <p class="eyebrow">${eyebrow}</p><h1 class="h1 ph-title">${title}</h1>${lede ? `<p class="lede">${lede}</p>` : ''}
+</div></section>`; };
 
 /* ---------------- structured data ---------------- */
 const org = { '@type': 'OnlineStore', '@id': SITE + '/#store', name: BRAND, url: SITE, logo: SITE + '/assets/icon-512.png', image: OG,
@@ -268,10 +270,11 @@ const add = (file, m, body, scripts) => pages.push({ file, m, html: page(m, body
 // Home
 const hero = `<section class="dark"><div class="wrap"><div class="hero">
   <div class="hero-copy">
-    <p class="eyebrow fade">Printed bandanas / ${P.length} colours</p>
+    <p class="eyebrow fade">Printed bandanas / <span data-count>${P.length}</span> colours</p>
     <h1 class="h1 hero-title"><span class="line"><span>The bandana</span></span><span class="line"><span>that finishes</span></span><span class="line"><span>the fit.</span></span></h1>
-    <p class="lede fade d2">Square printed bandanas in eight colours. Wear one on your head, around your neck, on your wrist or tied to your bag.</p>
-    <div class="hero-cta fade d3"><a href="#shop" class="btn btn-primary">Shop all ${P.length} colours ${ARROW}</a><span class="hero-from" data-from>From ${rs(ONE.price)}</span></div>
+    <p class="lede fade d2">Square printed bandanas in <span data-count-word>eight</span> colours. Wear one on your head, around your neck, on your wrist or tied to your bag.</p>
+    <div class="hero-cta fade d3"><a href="#shop" class="btn btn-primary"><span>Shop all <span data-count>${P.length}</span> colours</span> ${ARROW}</a><span class="hero-from" data-from>From ${rs(ONE.price)}</span></div>
+    <div class="hero-sw fade d3"><span class="lbl">Try a colour · <b data-hero-name>${P[0].name}</b></span><div class="hero-dots" data-hero-sw></div></div>
     <div class="hero-specs fade d4"><span>55 cm square</span><span>100% cotton</span><span>Delivered in <span data-days>${D.daysPk}</span> days</span></div>
   </div>
   <div class="hero-art fade d1">
@@ -304,7 +307,7 @@ add('shop.html', {
   title: 'Shop Bandanas — One Print in 8 Colours | Fudgio',
   desc: `All eight Fudgio bandanas: Classic Red, Jet Black, Navy, Forest Green, Mustard, Bone, Plum and Rust. 100% cotton, 55 cm square, from ${rs(ONE.price)} or $${ONE.usd}. Buy any ${D.bundleQty}, save ${D.bundlePct}%.`,
   ld: [{ '@type': 'ItemList', name: 'Fudgio bandanas', itemListElement: P.map((p, i) => ({ '@type': 'ListItem', position: i + 1, name: p.name + ' bandana', url: SITE + p.path })) }, crumbs([['Home', '/'], ['Shop', '/shop']])],
-}, pageHead('Shop / ' + P.length + ' colours', 'Every colour,<br>one great print.', `100% cotton, 55 cm square, hemmed edges. <span data-from>From ${rs(ONE.price)}</span> — and any ${D.bundleQty} take ${D.bundlePct}% off.`, 'Shop')
+}, pageHead('Shop / <span data-count>' + P.length + '</span> colours', 'Every colour,<br>one great print.', `100% cotton, 55 cm square, hemmed edges. <span data-from>From ${rs(ONE.price)}</span> — and any ${D.bundleQty} take ${D.bundlePct}% off.`, 'Shop')
   + `<section class="paper"><div class="wrap sec"><div class="deal-meter" data-deal-meter hidden></div>${grid()}${perks()}</div></section>` + band() + wear());
 
 // Product pages
@@ -312,7 +315,7 @@ const productExtras = (slug) => `<section class="paper" aria-labelledby="moreTit
   <div class="sec-head"><div class="stack"><p class="eyebrow">Make it three</p><h2 class="h2" id="moreTitle">Pick your other two</h2></div>
     <p>Any ${D.bundleQty} colours take <span data-pct>${D.bundlePct}</span>% off, worked out in your bag.</p></div>
   ${grid({ exclude: slug, limit: 4 })}
-  <p style="margin-top:36px"><a class="link" href="/shop">See all ${P.length} colours</a></p>
+  <p style="margin-top:36px"><a class="link" href="/shop">See all <span data-count>${P.length}</span> colours</a></p>
 </div></section>` + wear() + band();
 for (const p of P) {
   add(`bandanas/${p.slug}.html`, {
@@ -334,7 +337,7 @@ add('how-to-wear.html', {
   ld: [crumbs([['Home', '/'], ['How to wear', '/how-to-wear']]), { '@type': 'HowTo', name: 'How to wear a bandana on your head', step: WAYS[0][2].map((t, i) => ({ '@type': 'HowToStep', position: i + 1, text: t })) }],
 }, pageHead('How to wear', 'Five ways<br>to wear it.', 'Every one starts the same way: lay it flat, fold it corner to corner. Here is what to do next.', 'How to wear')
   + wear(true).replace('<section id="wear" class="dark"', '<section class="dark rule-top"')
-  + `<section class="paper"><div class="wrap sec"><div class="sec-head"><div class="stack"><p class="eyebrow">Now pick one</p><h2 class="h2">Choose your colour</h2></div><p>Same size and print on every one.</p></div>${grid({ limit: 4 })}<p style="margin-top:36px"><a class="link" href="/shop">See all ${P.length} colours</a></p></div></section>` + band());
+  + `<section class="paper"><div class="wrap sec"><div class="sec-head"><div class="stack"><p class="eyebrow">Now pick one</p><h2 class="h2">Choose your colour</h2></div><p>Same size and print on every one.</p></div>${grid({ limit: 4 })}<p style="margin-top:36px"><a class="link" href="/shop">See all <span data-count>${P.length}</span> colours</a></p></div></section>` + band());
 
 // Delivery & returns
 add('shipping.html', {
@@ -374,7 +377,7 @@ add('care.html', {
   + `<section class="paper"><div class="wrap sec"><div class="cols">
   <div class="box reveal-me"><p class="eyebrow">The size</p><div class="big">55 × 55 cm</div><p>22 × 22 inches. Folded into a triangle, the long edge is about 78 cm — enough to tie round most heads with ends to spare.</p></div>
   <div class="box reveal-me"><p class="eyebrow">The fabric</p><div class="big">100% cotton</div><p>Light, breathable and soft from the first wear. Hemmed edges so it doesn’t fray.</p></div>
-  <div class="box reveal-me"><p class="eyebrow">The print</p><div class="big">Colourfast</div><p>The same print on all eight colours, made to last through washes.</p></div>
+  <div class="box reveal-me"><p class="eyebrow">The print</p><div class="big">Colourfast</div><p>The same print on every colour, made to last through washes.</p></div>
 </div>
 <div class="prose" style="margin-top:64px">
   <h2>Washing</h2>
@@ -391,9 +394,9 @@ add('about.html', {
   ld: [crumbs([['Home', '/'], ['About', '/about']])],
 }, pageHead('About', 'One print.<br>Eight colours.<br>No fuss.', '', 'About')
   + `<section class="paper"><div class="wrap sec"><div class="prose">
-  <p style="font-size:1.375rem;color:var(--text);font-weight:500;letter-spacing:-.01em">A bandana is the cheapest way to change an outfit. Fudgio makes one good one, in eight colours, and gets it to you wherever you are.</p>
+  <p style="font-size:1.375rem;color:var(--text);font-weight:500;letter-spacing:-.01em">A bandana is the cheapest way to change an outfit. Fudgio makes one good one, in <span data-count-word>eight</span> colours, and gets it to you wherever you are.</p>
   <h2>Why one print</h2>
-  <p>Instead of a hundred designs, we picked a single classic print — a centre medallion, corner fans and a fine dotted field — and made it in eight colours that go with what people actually wear. Same size, same quality, every time. Pick the colour; that’s the whole decision.</p>
+  <p>Instead of a hundred designs, we picked a single classic print — a centre medallion, corner fans and a fine dotted field — and made it in <span data-count-word>eight</span> colours that go with what people actually wear. Same size, same quality, every time. Pick the colour; that’s the whole decision.</p>
   <h2>How we sell</h2>
   <p>In Pakistan you pay cash when it arrives, so there is nothing to risk. Everywhere else, you pay by a secure link before it ships, at one flat shipping price. And because bandanas are better in threes, any three take ${D.bundlePct}% off.</p>
   <h2>Talk to us</h2>
@@ -441,7 +444,7 @@ add('bulk-orders.html', {
   ld: [crumbs([['Home', '/'], ['Bulk & custom', '/bulk-orders']])],
 }, pageHead('Bulk &amp; custom', 'Bandanas for<br>the whole crew.', 'Teams, events, weddings, schools, brands. Tell us how many and when — we’ll come back with a price within a day.', 'Bulk &amp; custom')
   + `<section class="paper"><div class="wrap sec"><div class="cols" style="margin-bottom:56px">
-  <div class="box reveal-me"><p class="eyebrow">From 20 pieces</p><h3>Mix our colours</h3><p>Any of the eight colours, in any mix, at a better price per piece than the bundle deal.</p></div>
+  <div class="box reveal-me"><p class="eyebrow">From 20 pieces</p><h3>Mix our colours</h3><p>Any of our colours, in any mix, at a better price per piece than the bundle deal.</p></div>
   <div class="box reveal-me"><p class="eyebrow">Bigger runs</p><h3>Custom colours &amp; prints</h3><p>Your team colours, or your logo in the medallion. Ask us about minimums and timing.</p></div>
   <div class="box reveal-me"><p class="eyebrow">Anywhere</p><h3>Delivered together</h3><p>Shipped in one go across Pakistan or worldwide, packed by person or by box.</p></div>
 </div>${contactForm('Bulk or custom', '<div class="row2"><div class="field"><label for="cQty">How many</label><input id="cQty" name="qty" inputmode="numeric" placeholder="e.g. 50"/></div><div class="field"><label for="cWhen">Needed by</label><input id="cWhen" name="when" placeholder="e.g. 20 December"/></div></div>')}</div></section>`, ['assets/forms.js']);
