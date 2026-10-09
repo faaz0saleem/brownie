@@ -5,6 +5,7 @@ Allow: /
 Disallow: /cart
 Disallow: /checkout
 Disallow: /track
+Disallow: /saved
 Disallow: /bandana
 Disallow: /api/
 Disallow: /admin/

@@ -107,7 +107,8 @@ const VIEW_META = {
   settings: ['Settings', 'Delivery, the deal, payments & more'],
   messages: ['Messages', 'From the contact and bulk-order forms'],
   subscribers: ['Subscribers', 'People waiting for new colours'],
-  reviews: ['Reviews', 'From verified buyers — approve to publish']
+  reviews: ['Reviews', 'From verified buyers — approve to publish'],
+  coupons: ['Discount codes', 'Welcome codes, collaborations and offers']
 };
 document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -122,6 +123,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
     if (view === 'messages') loadMessages();
     if (view === 'subscribers') loadSubscribers();
     if (view === 'reviews') loadReviews();
+    if (view === 'coupons') loadCoupons();
   });
 });
 
@@ -243,7 +245,7 @@ function renderOrders() {
       <td><b>${esc(o.customer.name)}</b><br/><span class="muted">${esc(o.customer.phone)}</span>${o.customer.email ? `<br/><span class="muted" style="font-size:.76rem">${esc(o.customer.email)}</span>` : ''}</td>
       <td>${esc(o.customer.city)}${o.customer.countryName && o.customer.country !== 'PK' ? ', <b>' + esc(o.customer.countryName) + '</b>' : ''}<br/><span class="muted" style="font-size:.8rem">${esc(o.customer.address)}${o.customer.postcode ? ' ' + esc(o.customer.postcode) : ''}</span></td>
       <td class="order-items">${o.items.map((i) => `<span class="oi">${SWATCH(i.color)} ${i.qty}× ${esc(i.name)}</span>`).join('<br/>')}</td>
-      <td class="mono"><b>${MON(o, o.total)}</b>${o.discount ? `<br/><span class="muted" style="font-size:.76rem">−${MON(o, o.discount)} bundle</span>` : ''}</td>
+      <td class="mono"><b>${MON(o, o.total)}</b>${o.discount ? `<br/><span class="muted" style="font-size:.76rem">−${MON(o, o.discount)} bundle</span>` : ''}${o.coupon ? `<br/><span class="muted" style="font-size:.76rem">−${MON(o, o.couponDiscount)} ${esc(o.coupon)}</span>` : ''}${o.customer.gift ? '<br/><span class="pill-cod" style="background:#ffe4f0;color:#b0105a">🎁 Gift</span>' : ''}</td>
       <td>${o.currency === 'USD' ? '<span class="pill-cod" style="background:#ffe4f0;color:#b0105a">💳 Prepaid</span>' : '<span class="pill-cod">💵 COD</span>'}</td>
       <td class="muted" style="white-space:nowrap">${fmtDate(o.createdAt)}</td>
       <td>
@@ -282,10 +284,11 @@ function orderDetail(id) {
     : steps.map((s, i) => `<div style="color:${i <= idx ? 'var(--ok)' : 'var(--dim)'};font-weight:600">${i <= idx ? '●' : '○'} ${s}</div>`).join('');
   showModal(`<h3 style="font-size:1.3rem;margin-bottom:6px">${esc(o.id)}</h3>
     <span class="badge ${STATUS_CLASS[o.status]}">${o.status}</span>
-    <p style="margin:12px 0"><b>${esc(o.customer.name)}</b> · ${esc(o.customer.phone)}${o.customer.email ? ' · ' + esc(o.customer.email) : ''}<br>📍 ${esc(o.customer.address)}, ${esc(o.customer.city)}${o.customer.postcode ? ' ' + esc(o.customer.postcode) : ''}, ${esc(o.customer.countryName || 'Pakistan')}${o.customer.notes ? '<br><i>Note: ' + esc(o.customer.notes) + '</i>' : ''}</p>
+    <p style="margin:12px 0"><b>${esc(o.customer.name)}</b> · ${esc(o.customer.phone)}${o.customer.email ? ' · ' + esc(o.customer.email) : ''}${o.customer.gift ? '<br><b>🎁 Gift — pack without prices.</b>' + (o.customer.giftNote ? ' Card: “' + esc(o.customer.giftNote) + '”' : '') : ''}<br>📍 ${esc(o.customer.address)}, ${esc(o.customer.city)}${o.customer.postcode ? ' ' + esc(o.customer.postcode) : ''}, ${esc(o.customer.countryName || 'Pakistan')}${o.customer.notes ? '<br><i>Note: ' + esc(o.customer.notes) + '</i>' : ''}</p>
     <table style="width:100%;border-collapse:collapse">${o.items.map((i) => `<tr><td style="padding:6px 0">${SWATCH(i.color)} ${i.qty}× ${esc(i.name)}${i.size ? ' (' + esc(i.size) + ')' : ''}</td><td style="text-align:right">${MON(o, i.lineTotal)}</td></tr>`).join('')}
       <tr><td style="padding:6px 0;border-top:1px solid var(--line)">Subtotal</td><td style="text-align:right;border-top:1px solid var(--line)">${MON(o, o.subtotal)}</td></tr>
       ${o.discount ? `<tr><td style="padding:6px 0">Bundle deal</td><td style="text-align:right">−${MON(o, o.discount)}</td></tr>` : ''}
+      ${o.coupon ? `<tr><td style="padding:6px 0">Code ${esc(o.coupon)}</td><td style="text-align:right">−${MON(o, o.couponDiscount)}</td></tr>` : ''}
       <tr><td style="padding:6px 0">${o.currency === 'USD' ? 'Shipping' : 'Delivery'}</td><td style="text-align:right">${o.deliveryFee ? MON(o, o.deliveryFee) : 'Free'}</td></tr>
       <tr><td style="padding:8px 0;border-top:1px solid var(--line);font-weight:800">Total</td><td style="text-align:right;border-top:1px solid var(--line);font-weight:800">${MON(o, o.total)} (${o.currency === 'USD' ? 'prepaid — ship once paid' : 'cash on delivery'})</td></tr></table>
     <h4 style="margin:16px 0 8px">Status timeline</h4><div style="display:flex;gap:16px;flex-wrap:wrap">${tl}</div>`);
@@ -527,6 +530,7 @@ async function loadSettings() {
       <h3 style="margin-top:22px">🏪 Store</h3>
       ${row('Store open for orders', `<select id="setOpen"><option value="1" ${s.storeOpen ? 'selected' : ''}>Open</option><option value="0" ${!s.storeOpen ? 'selected' : ''}>Closed</option></select>`)}
       ${row('Announcement bar', txt('setAnn', s.announcement, 'Blank = automatic delivery & deal message'))}
+      ${row('Welcome code', txt('setWelcome', s.welcomeCode, 'WELCOME10'), 'Shown to newsletter sign-ups. Create it under Discount codes first.')}
       ${row('Instagram', txt('setIg', s.instagram, '@fudgio'))}
       ${row('WhatsApp number', txt('setWa', s.whatsapp, '923001234567'), 'With country code, digits only.')}
       <button class="btn-sm btn-save" style="margin-top:14px" onclick="saveSettings()">💾 Save settings</button>
@@ -563,7 +567,7 @@ async function saveSettings() {
   const body = { deliveryFee: v('setFee'), freeDeliveryOver: v('setFree'), daysPk: v('setDaysPk'),
     intlEnabled: v('setIntl') === '1', intlShipping: v('setIntlShip'), intlFreeOver: v('setIntlFree'), daysIntl: v('setDaysIntl'),
     usdRate: v('setRate'), intlPaymentLink: v('setPayLink'), bundleQty: v('setBQty'), bundlePct: v('setBPct'),
-    storeOpen: v('setOpen') === '1', announcement: v('setAnn'), instagram: v('setIg'), whatsapp: v('setWa') };
+    storeOpen: v('setOpen') === '1', announcement: v('setAnn'), instagram: v('setIg'), whatsapp: v('setWa'), welcomeCode: v('setWelcome') };
   const res = await api('/settings', { method: 'POST', body: JSON.stringify(body) });
   toast(res.ok ? 'Settings saved ✓' : 'Save failed');
   if (res.ok) loadSettings();
@@ -588,6 +592,41 @@ async function loadMessages() {
 }
 async function setMsg(id, status) { await api('/messages/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ status }) }); loadMessages(); loadDashboard(); }
 async function delMsg(id) { if (!confirm('Delete this message?')) return; await api('/messages/' + encodeURIComponent(id), { method: 'DELETE' }); loadMessages(); loadDashboard(); }
+
+// ---------- Discount codes ----------
+async function loadCoupons() {
+  const el = document.getElementById('couponsBody'); if (!el) return;
+  const list = await (await api('/coupons')).json();
+  const what = (c) => c.kind === 'percent' ? c.value + '% off' : c.kind === 'freeship' ? 'Free delivery' : 'Rs ' + c.value.toLocaleString('en-US') + (c.valueUsd ? ' / $' + c.valueUsd : '') + ' off';
+  el.innerHTML = `<div class="coupon-form">
+      <div class="inv-row"><label style="width:120px">Code</label><input id="cpCode" placeholder="WELCOME10" style="text-transform:uppercase"></div>
+      <div class="inv-row"><label style="width:120px">Type</label><select id="cpKind" onchange="document.getElementById('cpVals').style.display=this.value==='freeship'?'none':''"><option value="percent">% off</option><option value="fixed">Amount off</option><option value="freeship">Free delivery</option></select></div>
+      <div id="cpVals"><div class="inv-row"><label style="width:120px">Value</label><input id="cpValue" type="number" placeholder="10 (%), or rupees"></div>
+      <div class="inv-row"><label style="width:120px">$ off (abroad)</label><input id="cpUsd" type="number" placeholder="for 'Amount off' only"></div></div>
+      <div class="inv-row"><label style="width:120px">Min. bandanas</label><input id="cpMin" type="number" placeholder="0 = any"></div>
+      <div class="inv-row"><label style="width:120px">Max uses</label><input id="cpMax" type="number" placeholder="0 = unlimited"></div>
+      <div class="inv-row"><label style="width:120px">Expires</label><input id="cpExp" type="date"></div>
+      <div class="inv-row"><label style="width:120px">Once per customer</label><select id="cpOnce"><option value="1">Yes</option><option value="0">No</option></select></div>
+      <div class="inv-row"><label style="width:120px">Note</label><input id="cpNote" placeholder="Who it is for"></div>
+      <button class="btn-sm btn-save" onclick="saveCoupon()">💾 Save code</button></div>
+    <div class="table-wrap" style="margin-top:18px"><table><thead><tr><th>Code</th><th>Gives</th><th>Rules</th><th>Used</th><th>Status</th><th></th></tr></thead><tbody>
+    ${list.length ? list.map((c) => `<tr><td class="mono"><b>${esc(c.code)}</b>${c.note ? `<br><span class="muted" style="font-size:.8rem">${esc(c.note)}</span>` : ''}</td><td>${what(c)}</td>
+      <td class="muted" style="font-size:.85rem">${[c.minUnits ? c.minUnits + '+ bandanas' : '', c.oncePerCustomer ? 'once per customer' : '', c.maxUses ? 'max ' + c.maxUses : '', c.expiresAt ? 'until ' + new Date(c.expiresAt).toLocaleDateString() : ''].filter(Boolean).join(' · ') || 'none'}</td>
+      <td class="mono">${c.uses}</td><td>${c.active && !(c.expiresAt && c.expiresAt < Date.now()) && !(c.maxUses && c.uses >= c.maxUses) ? '<span class="badge b-delivered">Active</span>' : '<span class="badge b-cancelled">Off</span>'}</td>
+      <td style="white-space:nowrap"><button class="mini" onclick='toggleCoupon(${JSON.stringify(c).replace(/'/g, "&#39;")})'>${c.active ? 'Turn off' : 'Turn on'}</button> <button class="mini danger" onclick="delCoupon('${esc(c.code)}')">Delete</button></td></tr>`).join('')
+      : '<tr><td colspan="6"><div class="empty-state"><div class="em">🏷</div>No codes yet. A welcome code for newsletter sign-ups is a good first one.</div></td></tr>'}
+    </tbody></table></div>`;
+}
+async function saveCoupon() {
+  const v = (id) => document.getElementById(id).value;
+  const exp = v('cpExp') ? new Date(v('cpExp') + 'T23:59:59').getTime() : 0;
+  const res = await api('/coupons', { method: 'POST', body: JSON.stringify({ code: v('cpCode'), kind: v('cpKind'), value: v('cpValue'), valueUsd: v('cpUsd'),
+    minUnits: v('cpMin'), maxUses: v('cpMax'), expiresAt: exp, oncePerCustomer: v('cpOnce') === '1', note: v('cpNote'), active: true }) });
+  const d = await res.json().catch(() => ({}));
+  toast(res.ok ? 'Code ' + d.code + ' saved ✓' : (d.error || 'Save failed')); if (res.ok) loadCoupons();
+}
+async function toggleCoupon(c) { await api('/coupons', { method: 'POST', body: JSON.stringify({ ...c, active: !c.active }) }); loadCoupons(); }
+async function delCoupon(code) { if (!confirm('Delete code ' + code + '?')) return; await api('/coupons/' + encodeURIComponent(code), { method: 'DELETE' }); loadCoupons(); }
 
 // ---------- Reviews ----------
 async function loadReviews() {
@@ -668,8 +707,10 @@ async function submitProduct(id) {
 // --- 1. Print / packing slip for an order ---
 function printOrder(id){
   var o=ORDERS.find(function(x){return x.id===id;}); if(!o) return;
-  var rows=o.items.map(function(i){return '<tr><td>'+i.qty+'× '+esc(i.name)+' bandana'+(i.size?' ('+esc(i.size)+')':'')+'</td><td style="text-align:right">'+MON(o,i.lineTotal)+'</td></tr>';}).join('');
-  if(o.discount) rows+='<tr><td>Bundle deal</td><td style="text-align:right">−'+MON(o,o.discount)+'</td></tr>';
+  var gift=!!o.customer.gift;
+  var rows=o.items.map(function(i){return '<tr><td>'+i.qty+'× '+esc(i.name)+' bandana'+(i.size?' ('+esc(i.size)+')':'')+'</td><td style="text-align:right">'+(gift?'':MON(o,i.lineTotal))+'</td></tr>';}).join('');
+  if(o.discount && !gift) rows+='<tr><td>Bundle deal</td><td style="text-align:right">−'+MON(o,o.discount)+'</td></tr>';
+  if(o.coupon && !gift) rows+='<tr><td>Code '+esc(o.coupon)+'</td><td style="text-align:right">−'+MON(o,o.couponDiscount)+'</td></tr>';
   var w=window.open('','_blank','width=620,height=760');
   w.document.write('<html><head><title>'+esc(o.id)+' — Fudgio</title><style>'
     +'body{font-family:Arial,sans-serif;padding:28px;color:#222}h1{margin:0 0 4px;font-size:22px}'
@@ -679,8 +720,10 @@ function printOrder(id){
     +'<h1>FUDGIO — Packing Slip</h1><div class="muted">Order '+esc(o.id)+' · '+esc(fmtDate(o.createdAt))+' · '+esc(o.status)+'</div>'
     +'<div class="box"><b>'+esc(o.customer.name)+'</b><br>'+esc(o.customer.phone)+(o.customer.email?'<br>'+esc(o.customer.email):'')
     +'<br>'+esc(o.customer.address)+', '+esc(o.customer.city)+(o.customer.postcode?' '+esc(o.customer.postcode):'')+', '+esc(o.customer.countryName||'Pakistan')+(o.customer.notes?'<br><i>Note: '+esc(o.customer.notes)+'</i>':'')+'</div>'
-    +'<table>'+rows+'<tr><td>'+(o.currency==='USD'?'Shipping':'Delivery')+'</td><td style="text-align:right">'+(o.deliveryFee===0?'FREE':MON(o,o.deliveryFee))+'</td></tr>'
-    +'<tr class="tot"><td>TOTAL ('+(o.currency==='USD'?'Prepaid':'Cash on Delivery — collect this')+')</td><td style="text-align:right">'+MON(o,o.total)+'</td></tr></table>'
+    +'<table>'+rows+(gift ? '' : '<tr><td>'+(o.currency==='USD'?'Shipping':'Delivery')+'</td><td style="text-align:right">'+(o.deliveryFee===0?'FREE':MON(o,o.deliveryFee))+'</td></tr>'
+    +'<tr class="tot"><td>TOTAL ('+(o.currency==='USD'?'Prepaid':'Cash on Delivery — collect this')+')</td><td style="text-align:right">'+MON(o,o.total)+'</td></tr>')+'</table>'
+    +(gift ? '<div class="box"><b>A gift for you</b>'+(o.customer.giftNote ? '<p style="font-size:18px;margin:8px 0 0">“'+esc(o.customer.giftNote)+'”</p>' : '')+'</div>'
+      +(o.currency==='USD' ? '' : '<p class="muted" style="margin-top:12px">Rider: collect '+MON(o,o.total)+' (cash on delivery). Prices are not printed on this gift slip.</p>') : '')
     +'<p class="muted">Thank you for wearing Fudgio.</p></body></html>');
   w.document.close(); w.print();
 }

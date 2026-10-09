@@ -131,7 +131,13 @@ function db_init(PDO $pdo, string $driver): void {
     id VARCHAR(40) PRIMARY KEY, user_id VARCHAR(40), items TEXT, customer TEXT,
     subtotal INT, delivery_fee INT, total INT, payment_method VARCHAR(20),
     status VARCHAR(40), status_history TEXT, created_at BIGINT, currency VARCHAR(8) DEFAULT 'PKR',
-    discount INT DEFAULT 0)");
+    discount INT DEFAULT 0, coupon VARCHAR(40), coupon_discount INT DEFAULT 0)");
+  // Discount codes the admin hands out (a welcome code for the newsletter,
+  // a code for a collaboration). Checked on the server when an order is placed.
+  $pdo->exec("CREATE TABLE IF NOT EXISTS coupons (
+    code VARCHAR(40) PRIMARY KEY, kind VARCHAR(12), value INT DEFAULT 0, value_usd INT DEFAULT 0,
+    min_units INT DEFAULT 0, max_uses INT DEFAULT 0, uses INT DEFAULT 0, once_per_customer INT DEFAULT 0,
+    expires_at BIGINT DEFAULT 0, active INT DEFAULT 1, note VARCHAR(160), created_at BIGINT)");
   $pdo->exec("CREATE TABLE IF NOT EXISTS visits (
     id VARCHAR(40) PRIMARY KEY, visitor VARCHAR(40), page VARCHAR(191), ip VARCHAR(64),
     referrer VARCHAR(255), ua VARCHAR(255), created_at BIGINT)");
@@ -240,6 +246,16 @@ function db_migrate(PDO $pdo, string $driver = 'sqlite'): void {
       $up = $pdo->prepare("UPDATE products SET gallery=?, photo_keys=? WHERE id=?");
       foreach ($rows as $r) $up->execute([json_encode([$r['image_url']]), json_encode(photo_keys([$r['image_url']])), $r['id']]);
       meta_set($pdo, $driver, 'schema', '4');
+      $level = 4;
+    }
+
+    if ($level < 5) {
+      // Discount codes on orders.
+      foreach (['coupon' => 'VARCHAR(40)', 'coupon_discount' => 'INT DEFAULT 0'] as $col => $type) {
+        try { $pdo->query("SELECT $col FROM orders LIMIT 1"); }
+        catch (Throwable $e) { $pdo->exec("ALTER TABLE orders ADD COLUMN $col $type"); }
+      }
+      meta_set($pdo, $driver, 'schema', '5');
     }
 
     db_enforce_sizes($pdo);
@@ -349,7 +365,8 @@ function map_product(array $r): array {
 function map_order(array $r): array {
   return [
     'id'=>$r['id'],'userId'=>$r['user_id'],'items'=>jdec($r['items']),'customer'=>jdec($r['customer'], (object)[]),
-    'subtotal'=>(int)$r['subtotal'],'discount'=>(int)($r['discount'] ?? 0),'deliveryFee'=>(int)$r['delivery_fee'],'total'=>(int)$r['total'],
+    'subtotal'=>(int)$r['subtotal'],'discount'=>(int)($r['discount'] ?? 0),
+    'coupon'=>(string)($r['coupon'] ?? ''),'couponDiscount'=>(int)($r['coupon_discount'] ?? 0),'deliveryFee'=>(int)$r['delivery_fee'],'total'=>(int)$r['total'],
     'paymentMethod'=>$r['payment_method'],'status'=>$r['status'],'statusHistory'=>jdec($r['status_history']),
     'currency'=>($r['currency'] ?? '') ?: 'PKR',
     'createdAt'=>(int)$r['created_at'],
@@ -494,8 +511,8 @@ function clean_text($s, int $max = 200): string {
   return trim(mb_substr($s, 0, $max));
 }
 
-function order_create(array $items, array $customer, ?string $userId): array {
-  foreach (['name'=>80,'phone'=>30,'email'=>191,'address'=>300,'city'=>60,'postcode'=>20,'notes'=>300,'country'=>2] as $f=>$max)
+function order_create(array $items, array $customer, ?string $userId, string $couponCode = ''): array {
+  foreach (['name'=>80,'phone'=>30,'email'=>191,'address'=>300,'city'=>60,'postcode'=>20,'notes'=>300,'country'=>2,'giftNote'=>200] as $f=>$max)
     if (isset($customer[$f])) $customer[$f] = clean_text($customer[$f], $max);
 
   if (!$items) return ['error' => 'Your cart is empty.'];
@@ -614,6 +631,19 @@ function order_create(array $items, array $customer, ?string $userId): array {
   $discount = bundle_discount($units, $subtotal, $s);
   $afterDiscount = $subtotal - $discount;
 
+  // A discount code, on top of the deal. Validated here, never trusted from
+  // the browser: the cart only shows what this will work out.
+  $coupon = null; $couponDiscount = 0; $freeShip = false;
+  if (trim($couponCode) !== '') {
+    $c = coupon_validate($couponCode, $units, $customer);
+    if (isset($c['error'])) return ['error' => $c['error']];
+    $coupon = $c['coupon'];
+    if ($coupon['kind'] === 'percent') $couponDiscount = (int) round($afterDiscount * $coupon['value'] / 100);
+    elseif ($coupon['kind'] === 'fixed') $couponDiscount = min($afterDiscount, $domestic ? $coupon['value'] : $coupon['valueUsd']);
+    elseif ($coupon['kind'] === 'freeship') $freeShip = true;
+    $afterDiscount -= $couponDiscount;
+  }
+
   // commit stock
   foreach ($lineItems as $li) {
     $p = product_get($li['productId'], true);
@@ -632,6 +662,7 @@ function order_create(array $items, array $customer, ?string $userId): array {
     $free = (int)$s['intlFreeOver'];
     $delivery = ($free > 0 && $afterDiscount >= $free) ? 0 : (int)$s['intlShipping'];
   }
+  if ($freeShip) $delivery = 0;
   $currency = $domestic ? 'PKR' : 'USD';
   $method   = $domestic ? 'COD' : 'Prepaid';
   // An international order is not real until it is paid, so it waits there.
@@ -645,15 +676,20 @@ function order_create(array $items, array $customer, ?string $userId): array {
       'postcode'=>trim($customer['postcode'] ?? ''),
       'country'=>$country,'countryName'=>country_name($country),
       'notes'=>trim($customer['notes'] ?? ''),'email'=>trim($customer['email'] ?? ''),
+      // A gift: pack it without prices, with the note if there is one.
+      'gift'=>!empty($customer['gift']),'giftNote'=>!empty($customer['gift']) ? trim($customer['giftNote'] ?? '') : '',
     ],
-    'subtotal'=>$subtotal,'discount'=>$discount,'deliveryFee'=>$delivery,'total'=>$afterDiscount+$delivery,'currency'=>$currency,
+    'subtotal'=>$subtotal,'discount'=>$discount,'coupon'=>$coupon['code'] ?? '','couponDiscount'=>$couponDiscount,
+    'deliveryFee'=>$delivery,'total'=>$afterDiscount+$delivery,'currency'=>$currency,
     'paymentMethod'=>$method,'status'=>$status,'statusHistory'=>[['status'=>$status,'at'=>$now]],
     'createdAt'=>$now,
   ];
-  $st = db()->prepare("INSERT INTO orders (id,user_id,items,customer,subtotal,delivery_fee,total,payment_method,status,status_history,created_at,currency,discount)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  $st = db()->prepare("INSERT INTO orders (id,user_id,items,customer,subtotal,delivery_fee,total,payment_method,status,status_history,created_at,currency,discount,coupon,coupon_discount)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   $st->execute([$order['id'],$userId,json_encode($order['items']),json_encode($order['customer']),
-    $order['subtotal'],$order['deliveryFee'],$order['total'],$method,$status,json_encode($order['statusHistory']),$now,$currency,$discount]);
+    $order['subtotal'],$order['deliveryFee'],$order['total'],$method,$status,json_encode($order['statusHistory']),$now,$currency,$discount,
+    $order['coupon'] ?: null, $couponDiscount]);
+  if ($coupon) db()->prepare("UPDATE coupons SET uses = uses + 1 WHERE code=?")->execute([$coupon['code']]);
 
   // upsert customer record
   $user = $userId ? user_by_id($userId) : null;
@@ -700,12 +736,98 @@ function notify_order(array $o): void {
   $body = "New Fudgio order {$o['id']}\n\nName: {$c['name']}\nPhone: {$c['phone']}\nEmail: " . ($c['email'] ?? '') . "\n"
     . "Ship to: {$c['address']}, $where" . (!empty($c['postcode']) ? " {$c['postcode']}" : '') . "\n"
     . (!empty($c['notes']) ? "Notes: {$c['notes']}\n" : '')
+    . (!empty($c['gift']) ? "GIFT — pack without prices." . (!empty($c['giftNote']) ? " Note to include: {$c['giftNote']}" : '') . "\n" : '')
     . "\nItems:\n$lines\nSubtotal: " . $m($o['subtotal'])
     . (!empty($o['discount']) ? "\nBundle discount: -" . $m($o['discount']) : '')
+    . (!empty($o['coupon']) ? "\nCode {$o['coupon']}: -" . $m($o['couponDiscount'] ?? 0) : '')
     . "\nShipping: " . ($o['deliveryFee'] == 0 ? 'FREE' : $m($o['deliveryFee']))
     . "\nTOTAL: " . $m($o['total']) . "\nPayment: $pay\n\nManage it in your admin dashboard.";
   send_mail($to, "New order {$o['id']} - " . $m($o['total']) . ($usd ? ' (international, prepaid)' : ' (COD)'), $body);
 }
+/** A thank-you to the customer with what they ordered and how to track it. */
+function notify_customer(array $o): void {
+  $to = trim((string)($o['customer']['email'] ?? ''));
+  if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) return;
+  $usd = ($o['currency'] ?? 'PKR') === 'USD';
+  $m = fn($n) => $usd ? '$' . number_format((float)$n) : 'Rs ' . number_format((float)$n);
+  $lines = '';
+  foreach ($o['items'] as $li) $lines .= "  {$li['qty']} × {$li['name']} bandana  " . $m($li['lineTotal']) . "\n";
+  $site = rtrim((string) cfg()['siteUrl'], '/');
+  $track = $site . '/track?id=' . rawurlencode($o['id']) . '&phone=' . rawurlencode($o['customer']['phone'] ?? '');
+  $first = strtok(trim((string)($o['customer']['name'] ?? '')), ' ') ?: 'there';
+  $pay = $usd
+    ? "Your order is reserved and ships as soon as it is paid." . (($link = (string)(settings_get()['intlPaymentLink'] ?? '')) !== ''
+        ? "\nPay here: $link (put {$o['id']} in the payment note)." : "\nWe will send you a secure payment link shortly.")
+    : "Pay the rider in cash when it arrives. We will call or message to confirm first.";
+  $body = "Hi $first,\n\nThank you for your Fudgio order. Here it is:\n\nOrder {$o['id']}\n$lines"
+    . (!empty($o['discount']) ? "  Bundle deal  -" . $m($o['discount']) . "\n" : '')
+    . (!empty($o['coupon']) ? "  Code {$o['coupon']}  -" . $m($o['couponDiscount'] ?? 0) . "\n" : '')
+    . "  " . ($usd ? 'Shipping' : 'Delivery') . "  " . ($o['deliveryFee'] ? $m($o['deliveryFee']) : 'Free') . "\n"
+    . "  Total  " . $m($o['total']) . "\n\n$pay\n\nTrack it any time: $track\n\nQuestions? Just reply to this email.\n\n— Fudgio";
+  send_mail($to, "Your Fudgio order {$o['id']}", $body);
+}
+
+/* ---------------- discount codes ---------------- */
+function map_coupon(array $r): array {
+  return ['code'=>$r['code'],'kind'=>$r['kind'],'value'=>(int)$r['value'],'valueUsd'=>(int)$r['value_usd'],
+    'minUnits'=>(int)$r['min_units'],'maxUses'=>(int)$r['max_uses'],'uses'=>(int)$r['uses'],
+    'oncePerCustomer'=>(bool)$r['once_per_customer'],'expiresAt'=>(int)$r['expires_at'],'active'=>(bool)$r['active'],
+    'note'=>(string)($r['note'] ?? ''),'createdAt'=>(int)$r['created_at']];
+}
+function coupon_norm(string $code): string { return strtoupper(preg_replace('/[^A-Za-z0-9_-]/', '', $code)); }
+function coupon_get(string $code): ?array {
+  $st = db()->prepare("SELECT * FROM coupons WHERE code=?"); $st->execute([coupon_norm($code)]);
+  $r = $st->fetch(); return $r ? map_coupon($r) : null;
+}
+function coupons_all(): array { return array_map('map_coupon', db()->query("SELECT * FROM coupons ORDER BY created_at DESC")->fetchAll()); }
+/** Words for a code, as the customer sees it. */
+function coupon_label(array $c): string {
+  if ($c['kind'] === 'percent') return $c['value'] . '% off';
+  if ($c['kind'] === 'freeship') return 'Free delivery';
+  return 'Rs ' . number_format($c['value']) . ($c['valueUsd'] ? ' / $' . $c['valueUsd'] : '') . ' off';
+}
+/**
+ * Is this code usable for this order? $customer may be empty (the cart
+ * checking a code before checkout), in which case once-per-customer is
+ * checked later, when the order is placed.
+ */
+function coupon_validate(string $code, int $units, array $customer = []): array {
+  $c = coupon_get($code);
+  if (!$c || !$c['active']) return ['error' => 'That discount code is not valid.'];
+  if ($c['expiresAt'] && $c['expiresAt'] < now_ms()) return ['error' => 'That discount code has expired.'];
+  if ($c['maxUses'] && $c['uses'] >= $c['maxUses']) return ['error' => 'That discount code has been used up.'];
+  if ($c['minUnits'] && $units < $c['minUnits']) return ['error' => "That code needs at least {$c['minUnits']} bandanas in the bag."];
+  if ($c['oncePerCustomer'] && (!empty($customer['email']) || !empty($customer['phone']))) {
+    $st = db()->prepare("SELECT customer FROM orders WHERE coupon=? AND status<>'Cancelled'"); $st->execute([$c['code']]);
+    $email = strtolower(trim((string)($customer['email'] ?? ''))); $phone = preg_replace('/\D/', '', (string)($customer['phone'] ?? ''));
+    foreach ($st->fetchAll() as $row) {
+      $oc = jdec($row['customer'], []);
+      if (($email !== '' && strtolower((string)($oc['email'] ?? '')) === $email) || ($phone !== '' && preg_replace('/\D/', '', (string)($oc['phone'] ?? '')) === $phone))
+        return ['error' => 'That code is for one order per customer, and it has been used on yours already.'];
+    }
+  }
+  return ['coupon' => $c];
+}
+function coupon_save(array $b): array {
+  $code = coupon_norm((string)($b['code'] ?? ''));
+  if (strlen($code) < 3 || strlen($code) > 40) return ['error' => 'A code needs 3 to 40 letters or numbers.'];
+  $kind = in_array($b['kind'] ?? '', ['percent', 'fixed', 'freeship'], true) ? $b['kind'] : 'percent';
+  $value = max(0, (int)($b['value'] ?? 0));
+  if ($kind === 'percent' && ($value < 1 || $value > 90)) return ['error' => 'A percentage code takes 1 to 90%.'];
+  if ($kind === 'fixed' && $value < 1) return ['error' => 'Give the rupee amount off.'];
+  $row = [$code, $kind, $value, max(0, (int)($b['valueUsd'] ?? 0)), max(0, (int)($b['minUnits'] ?? 0)), max(0, (int)($b['maxUses'] ?? 0)),
+    !empty($b['oncePerCustomer']) ? 1 : 0, max(0, (int)($b['expiresAt'] ?? 0)), isset($b['active']) ? (int)!!$b['active'] : 1, clean_text($b['note'] ?? '', 160)];
+  if (coupon_get($code)) {
+    db()->prepare("UPDATE coupons SET kind=?, value=?, value_usd=?, min_units=?, max_uses=?, once_per_customer=?, expires_at=?, active=?, note=? WHERE code=?")
+       ->execute(array_merge(array_slice($row, 1), [$code]));
+  } else {
+    db()->prepare("INSERT INTO coupons (code,kind,value,value_usd,min_units,max_uses,once_per_customer,expires_at,active,note,uses,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,?)")
+       ->execute(array_merge($row, [now_ms()]));
+  }
+  return ['coupon' => coupon_get($code)];
+}
+function coupon_delete(string $code): bool { $st = db()->prepare("DELETE FROM coupons WHERE code=?"); $st->execute([coupon_norm($code)]); return $st->rowCount() > 0; }
+
 function orders_all(?string $userId = null): array {
   if ($userId) { $st = db()->prepare("SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC"); $st->execute([$userId]); $rows=$st->fetchAll(); }
   else $rows = db()->query("SELECT * FROM orders ORDER BY created_at DESC")->fetchAll();
@@ -800,6 +922,8 @@ function settings_get(): array {
     // Social links for the footer and contact page. Blank hides them.
     'instagram'        => (string) env('INSTAGRAM', ''),
     'whatsapp'         => (string) env('WHATSAPP', ''),
+    // A discount code shown to people who sign up for "new colours first".
+    'welcomeCode'      => '',
   ];
   try {
     $row = db()->query("SELECT v FROM settings WHERE k='store'")->fetch();
@@ -823,6 +947,7 @@ function settings_set(array $patch): array {
   if (isset($patch['daysIntl']))         $cur['daysIntl']         = clean_text((string)$patch['daysIntl'], 20);
   if (isset($patch['instagram']))        $cur['instagram']        = instagram_handle((string)$patch['instagram']);
   if (isset($patch['whatsapp']))         $cur['whatsapp']         = preg_replace('/\D/', '', (string)$patch['whatsapp']);
+  if (isset($patch['welcomeCode']))      $cur['welcomeCode']      = coupon_norm((string)$patch['welcomeCode']);
   if (isset($patch['intlPaymentLink'])) {
     // Shown to customers as a link, so only an http(s) URL is accepted.
     $link = trim((string)$patch['intlPaymentLink']);
@@ -842,13 +967,14 @@ function instagram_handle(string $v): string {
 }
 function orders_csv(): string {
   $rows = orders_all();
-  $out = "Order,Date,Name,Phone,Email,Country,City,Postcode,Address,Items,Currency,Discount,Total,Payment,Status\n";
+  $out = "Order,Date,Name,Phone,Email,Country,City,Postcode,Address,Items,Currency,Discount,Code,Total,Payment,Status,Gift\n";
   foreach ($rows as $o) {
     $items = implode('; ', array_map(fn($li)=>"{$li['qty']}x {$li['name']}".($li['size']?" ({$li['size']})":''), $o['items']));
     $c = $o['customer'];
     $cells = [$o['id'], date('Y-m-d H:i', (int)($o['createdAt']/1000)), $c['name']??'', $c['phone']??'', $c['email']??'',
       $c['countryName'] ?? 'Pakistan', $c['city']??'', $c['postcode']??'', $c['address']??'', $items,
-      $o['currency'] ?? 'PKR', $o['discount'] ?? 0, $o['total'], $o['paymentMethod'], $o['status']];
+      $o['currency'] ?? 'PKR', ($o['discount'] ?? 0) + ($o['couponDiscount'] ?? 0), $o['coupon'] ?? '', $o['total'], $o['paymentMethod'], $o['status'],
+      !empty($c['gift']) ? 'Gift' . (!empty($c['giftNote']) ? ': ' . $c['giftNote'] : '') : ''];
     // A leading = + - @ makes a spreadsheet treat the cell as a formula; these
     // cells hold customer-typed text, so neutralise that before export.
     $cells = array_map(fn($x) => preg_match('/^[=+\-@]/', (string)$x) ? "'" . $x : $x, $cells);

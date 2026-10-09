@@ -39,7 +39,8 @@ function summaryHtml(){
   }).join('');
   var nudge = nudgeText();
   return '<div class="panel summary"><h2>Your order</h2>'+rows
-    +'<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">'+totalsHTML()+'</div>'
+    +'<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">'+totalsHTML()+couponFormHTML()+'</div>'
+    +arrivalHTML()
     +(nudge ? '<p class="pay-note" style="color:var(--pink-2)">'+esc(nudge)+' <a class="link" href="/shop">Add more</a></p>' : '')
     +'<p class="pay-note">'+(isPK() ? 'Cash on delivery — pay when it arrives' : 'Paid before it ships · prices in USD')+'</p></div>';
 }
@@ -101,7 +102,9 @@ function detailsHTML(){
       +'<div class="field"><label for="fCity">City</label><input id="fCity" value="'+esc(d.city||'')+'" autocomplete="address-level2" placeholder="e.g. Lahore"/></div>'
       +'<div class="field"><label for="fPost">Postcode</label><input id="fPost" value="'+esc(d.postcode||'')+'" autocomplete="postal-code" placeholder="Optional in Pakistan"/></div>'
     +'</div>'
-    +'<div class="field"><label for="fNotes">Notes (optional)</label><input id="fNotes" value="'+esc(d.notes||'')+'" placeholder="Landmark, a gift message, best time to call…"/></div>'
+    +'<div class="field"><label for="fNotes">Notes for delivery (optional)</label><input id="fNotes" value="'+esc(d.notes||'')+'" placeholder="Landmark, best time to call…"/></div>'
+    +'<label class="check"><input type="checkbox" id="fGift"'+(d.gift?' checked':'')+' onchange="document.getElementById(\'giftBox\').hidden=!this.checked"/><span><b>This is a gift</b> — we leave the prices out of the parcel</span></label>'
+    +'<div class="field" id="giftBox"'+(d.gift?'':' hidden')+'><label for="fGiftNote">Gift message (optional)</label><input id="fGiftNote" maxlength="200" value="'+esc(d.giftNote||'')+'" placeholder="Happy birthday! Love, Sara"/><span class="hint">We write it on a card in the parcel.</span></div>'
     + captchaHTML()
     +'<div class="err" id="err" role="alert"></div>'
     +'<button type="button" class="btn btn-primary btn-block" id="place" onclick="primaryAction()"></button>'
@@ -147,7 +150,8 @@ function paintBlocker(){
 /** Reads and validates the form. Returns the details, or null after showing why. */
 function readDetails(){
   var v = function(id){ var el=document.getElementById(id); return el ? (el.value||'').trim() : ''; };
-  var d = { country:v('fCountry'), name:v('fName'), phone:v('fPhone'), email:v('fEmail'), city:v('fCity'), postcode:v('fPost'), address:v('fAddr'), notes:v('fNotes') };
+  var d = { country:v('fCountry'), name:v('fName'), phone:v('fPhone'), email:v('fEmail'), city:v('fCity'), postcode:v('fPost'), address:v('fAddr'), notes:v('fNotes'),
+            gift: !!(document.getElementById('fGift') && document.getElementById('fGift').checked), giftNote: v('fGiftNote') };
   if(!d.country){ showErr('Please choose the country we should ship to.'); document.getElementById('fCountry').focus(); return null; }
   if(!d.name||!d.phone||!d.email||!d.city||!d.address){ showErr('Please fill in your name, phone, email, address and city.'); return null; }
   if(!validPhone(d.phone)){ showErr(d.country==='PK' ? 'Please enter a valid mobile number, like 0300 1234567.' : 'Please enter a valid phone number, with your country code.'); return null; }
@@ -223,19 +227,21 @@ function place(){
   var d = viaSms ? DETAILS : readDetails();
   if(!d) return;
   if(blocker()){ showErr(blocker()); return; }
-  var body = { items: getCart().map(function(i){ return {productId:i.id, size:i.size, qty:i.qty}; }), customer: d };
+  var body = { items: getCart().map(function(i){ return {productId:i.id, size:i.size, qty:i.qty}; }), customer: d, coupon: (getCoupon() || {}).code || '' };
   if(!viaSms){ var answer = readCaptcha(); if(answer===null) return; body.captchaId = CAPTCHA_ID; body.captchaAnswer = answer; }
   var btn = document.getElementById(viaSms ? 'confirmBtn' : 'place'), label = btn ? btn.textContent : '';
   if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.textContent='Placing order…'; }
   api('POST','/api/orders', body, function(ok, r){
     if(!ok){
       showErr(r.error || 'Could not place the order. Please try again.');
+      // A code that no longer works comes out of the bag, so the next try goes through.
+      if(r.error && /code/i.test(r.error) && getCoupon()){ setCoupon(null); showErr(r.error + ' We have taken it off — your new total is ' + money(cartTotal()) + '.'); }
       if(btn){ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.textContent=label; }
       if(!viaSms) loadCaptcha();   // that attempt used up the challenge
       return;
     }
     DONE = true;
-    try{ localStorage.removeItem('fudgio_cart'); }catch(e){}
+    try{ localStorage.removeItem('fudgio_cart'); localStorage.removeItem('fudgio_coupon'); }catch(e){}
     CAPTCHA_ID=''; DETAILS=null;
     orderDone(r.order || {}, d);
     emit();
@@ -261,7 +267,9 @@ function orderDone(o, d){
     +'<p class="eyebrow">'+(intl ? 'Order received' : 'Order placed')+'</p><h2 class="h2">Thank you, '+esc(d.name.split(' ')[0])+'.</h2>'
     +'<p style="color:var(--soft)">Your order number is</p><div class="oid">'+esc(o.id||'')+'</div>'
     +'<p style="color:var(--soft)">'+(intl ? 'Shipping to '+esc(countryName(d.country)||d.country)+'. ' : 'We’ll call or message to confirm, then it’s on its way. Pay cash when it arrives. ')
-      +(o.discount ? 'You saved '+money(o.discount, region)+' with the bundle deal. ' : '')+'Keep your order number to check on it any time.</p>'
+      +((o.discount || o.couponDiscount) ? 'You saved '+money((o.discount||0) + (o.couponDiscount||0), region)+'. ' : '')
+      +(d.gift ? 'We’ll pack it as a gift, without prices. ' : '')
+      +(d.email ? 'A confirmation is on its way to '+esc(d.email)+'. ' : '')+'Keep your order number to check on it any time.</p>'
     + pay
     +'<div class="actions"><a href="'+trackUrl+'" class="btn btn-primary">Track your order</a><a href="/shop" class="btn btn-ghost">Keep shopping</a></div></div>';
   window.scrollTo(0,0);

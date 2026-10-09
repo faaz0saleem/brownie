@@ -33,10 +33,17 @@ Never hand-edit the generated `.html` files — the next build overwrites them.
 - Rupees or dollars, picked from the visitor's time zone and switchable from the header.
 - Slide-out bag with a live "add 2 more to save 15%" meter; full bag page; checkout with
   cash on delivery (Pakistan, optional SMS code) or a prepaid payment link (worldwide), behind a CAPTCHA.
-- Order tracking by order number + phone, newsletter sign-up, contact and bulk-order forms
-  that land in the admin inbox and your email.
+- Bag: "added" panel with the deal progress, quantity steppers on every card, a pick-two-more
+  upsell, discount codes (checked again on the server), estimated arrival dates and a free-delivery bar.
+- Product pages: flat / folded / close-up / worn views with a zoomable lightbox, size guide,
+  colour switch without a page reload, save to favourites, share, "complete your three" set,
+  reviews, recently viewed and a sticky buy bar on phones.
+- Gift orders (prices left off the slip, optional card message), a confirmation email to the
+  customer, a welcome code for newsletter sign-ups and a WhatsApp chat button.
+- Order tracking by order number + phone, verified customer reviews, newsletter sign-up, contact
+  and bulk-order forms that land in the admin inbox and your email.
 - Pages: Home, Shop, 8 colours, How to wear, Delivery & returns, Size & care, About, FAQ,
-  Contact, Bulk & custom, Track, Bag, Checkout, 404. Old brownie URLs 301 to their replacements.
+  Contact, Bulk & custom, Saved, Track, Bag, Checkout, 404. Old brownie URLs 301 to their replacements.
 
 ### Admin
 - Dashboard: revenue (rupees and dollars), orders to handle, awaiting payment, bandanas sold,
@@ -46,8 +53,11 @@ Never hand-edit the generated `.html` files — the next build overwrites them.
   packing list by colour, packing slips, WhatsApp/call buttons, CSV export.
 - Colours: add a colour by picking two colours (the print is drawn for you), set Rs and $ prices,
   stock and photos.
-- Messages inbox, subscriber list with CSV export, and settings for delivery, international
-  shipping, the deal, the payment link and social links.
+- Discount codes: % off, amount off or free delivery, with a minimum number of bandanas,
+  an expiry date, a use limit and once-per-customer.
+- Reviews to approve or hide, messages inbox, subscriber list with CSV export, and settings for
+  delivery, delivery days, international shipping, the deal, the payment link, the welcome code,
+  WhatsApp, Instagram and the banner / lookbook photos.
 
 ## 🚀 Run locally
 

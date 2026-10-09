@@ -13,7 +13,7 @@
     var blocked = cart.some(shortOf), nudge = nudgeText();
     root.innerHTML = '<div class="deal-meter" data-deal-meter>'+dealMeterHTML()+'</div>'
       +'<div class="split"><div class="panel"><h2>'+cartUnits()+' bandana'+(cartUnits()===1?'':'s')+'</h2>'+bagLinesHTML()+'</div>'
-      +'<div class="panel summary"><h2>Summary</h2>'+totalsHTML()
+      +'<div class="panel summary"><h2>Summary</h2>'+arrivalHTML()+totalsHTML()+couponFormHTML()
       +(nudge ? '<p class="pay-note" style="color:var(--pink-2)">'+esc(nudge)+'</p>' : '')
       +(blocked ? '<p class="err" style="margin-top:12px">Please remove or reduce the items marked above.</p><button class="btn btn-primary btn-block" style="margin-top:14px" disabled>Checkout</button>'
                 : '<a href="/checkout" class="btn btn-primary btn-block" style="margin-top:18px">Checkout</a>')

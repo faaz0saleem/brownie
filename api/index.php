@@ -117,6 +117,25 @@ try {
     ]);
   }
 
+  // ---- discount codes ----
+  // POST /api/coupon {code, units} checks a code for the bag (public, slowed
+  // down so codes can't be guessed); /api/coupons is the admin's list.
+  if ($path==='coupon' && $method==='POST') {
+    throttle('coupon', 30, 3600000);
+    $b = body(4096);
+    $r = coupon_validate((string)($b['code'] ?? ''), max(0, (int)($b['units'] ?? 0)));
+    if (isset($r['error'])) err($r['error']);
+    $c = $r['coupon'];
+    out(['code'=>$c['code'],'kind'=>$c['kind'],'value'=>$c['value'],'valueUsd'=>$c['valueUsd'],'minUnits'=>$c['minUnits'],'label'=>coupon_label($c)]);
+  }
+  if ($seg[0]==='coupons') {
+    require_admin();
+    if (count($seg)===1 && $method==='GET') out(coupons_all());
+    if (count($seg)===1 && $method==='POST') { $r = coupon_save(body()); isset($r['error']) ? err($r['error']) : out($r['coupon']); }
+    if (count($seg)===2 && $method==='DELETE') out(['ok'=>coupon_delete(urldecode($seg[1]))]);
+    err('Not found', 404);
+  }
+
   // ---- reviews ----
   // GET /api/reviews[?slug=] is public (approved only). POST needs the order
   // number and phone. The admin lists, approves, hides and deletes.
@@ -144,7 +163,11 @@ try {
     $b = body(4096);
     if (!empty($b['website'])) out(['ok'=>true]);       // honeypot: a bot filled the hidden field
     $r = subscriber_add((string)($b['email'] ?? ''), (string)($b['source'] ?? 'site'));
-    isset($r['error']) ? err($r['error']) : out(['ok'=>true]);
+    if (isset($r['error'])) err($r['error']);
+    // Hand over the welcome code, if the shop has set one that still works.
+    $wc = (string)(settings_get()['welcomeCode'] ?? '');
+    $ok = $wc !== '' && !isset(coupon_validate($wc, 99)['error']) ? coupon_get($wc) : null;
+    out(['ok'=>true, 'code'=>$ok ? $ok['code'] : '', 'codeLabel'=>$ok ? coupon_label($ok) : '']);
   }
 
   // Public: the contact form. Stored for the admin inbox, then emailed to
@@ -391,7 +414,7 @@ try {
         $cap = captcha_check((string)($b['captchaId'] ?? ''), (string)($b['captchaAnswer'] ?? ''));
         if (isset($cap['error'])) err($cap['error']);
       }
-      $r=order_create($b['items']??[], $cust, $u['id']??null);
+      $r=order_create($b['items']??[], $cust, $u['id']??null, (string)($b['coupon'] ?? ''));
       if (isset($r['error'])) err($r['error']);
       // Single-use: the same confirmed number cannot be replayed for a second
       // order without asking for a new code.
@@ -414,6 +437,7 @@ try {
       else { while (ob_get_level() > 0) @ob_end_flush(); @flush(); }
 
       notify_order($r['order']);
+      notify_customer($r['order']);
       exit;
     }
     require_admin();

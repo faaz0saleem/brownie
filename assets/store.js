@@ -139,12 +139,59 @@ function cartDiscount(region){
   if(!pct || cartUnits() < Math.max(2, FUDGIO.bundleQty|0) || sub <= 0) return 0;
   return Math.round(sub * pct / 100);
 }
-function cartDelivery(region){
+/* A discount code from the bag. The server re-checks it when the order is
+   placed (coupon_validate in api/db.php) and these sums mirror its maths. */
+function getCoupon(){ try{ var c = JSON.parse(localStorage.getItem('fudgio_coupon')||'null'); return c && c.code ? c : null; }catch(e){ return null; } }
+function setCoupon(c){ try{ if(c) localStorage.setItem('fudgio_coupon', JSON.stringify(c)); else localStorage.removeItem('fudgio_coupon'); }catch(e){} emit(); }
+function couponShort(){ var c = getCoupon(); return c && c.minUnits && cartUnits() < c.minUnits ? c.minUnits - cartUnits() : 0; }
+function couponDiscount(region){
+  var c = getCoupon(); if(!c || couponShort()) return 0;
   var r = region || REGION, after = cartSubtotal(r) - cartDiscount(r);
+  if(c.kind === 'percent') return Math.round(after * c.value / 100);
+  if(c.kind === 'fixed') return Math.min(after, r === 'PK' ? c.value : (c.valueUsd || 0));
+  return 0;
+}
+function couponFreeShip(){ var c = getCoupon(); return !!(c && c.kind === 'freeship' && !couponShort()); }
+function cartDelivery(region){
+  var r = region || REGION, after = cartSubtotal(r) - cartDiscount(r) - couponDiscount(r);
+  if(couponFreeShip()) return 0;
   if(r === 'PK') return (FUDGIO.freeOver > 0 && after >= FUDGIO.freeOver) ? 0 : FUDGIO.deliveryFee;
   return (FUDGIO.intlFreeOver > 0 && after >= FUDGIO.intlFreeOver) ? 0 : FUDGIO.intlShipping;
 }
-function cartTotal(region){ return cartSubtotal(region) - cartDiscount(region) + cartDelivery(region); }
+function cartTotal(region){ return cartSubtotal(region) - cartDiscount(region) - couponDiscount(region) + cartDelivery(region); }
+/* How far the bag is from free delivery, or 0 when it's free / never free. */
+function freeShipLeft(region){
+  var r = region || REGION, after = cartSubtotal(r) - cartDiscount(r) - couponDiscount(r), t = r === 'PK' ? FUDGIO.freeOver : FUDGIO.intlFreeOver;
+  var fee = r === 'PK' ? FUDGIO.deliveryFee : FUDGIO.intlShipping;
+  return (!couponFreeShip() && fee && t > 0 && after < t) ? t - after : 0;
+}
+
+/* ---------------- when it arrives ----------------
+   "3–5" working days from today, skipping Sundays in Pakistan and weekends
+   elsewhere, written as a date range people can plan around. */
+function deliveryWindow(region){
+  var r = region || REGION, txt = String(r === 'PK' ? FUDGIO.daysPk : FUDGIO.daysIntl), m = txt.match(/(\d+)\D+(\d+)/) || txt.match(/(\d+)/);
+  if(!m) return '';
+  var lo = +m[1], hi = +(m[2] || m[1]);
+  var add = function(n){ var d = new Date(); while(n > 0){ d.setDate(d.getDate() + 1); var w = d.getDay(); if(w === 0 || (r !== 'PK' && w === 6)) continue; n--; } return d; };
+  var f = function(d, mon){ return d.toLocaleDateString('en-GB', mon ? { weekday: 'short', day: 'numeric', month: 'short' } : { weekday: 'short', day: 'numeric' }).replace(',', ''); };
+  var a = add(lo), b = add(hi);
+  return lo === hi ? f(a, true) : f(a, a.getMonth() !== b.getMonth()) + ' – ' + f(b, true);
+}
+
+/* ---------------- favourites ---------------- */
+function getSaved(){ try{ var s = JSON.parse(localStorage.getItem('fudgio_saved')||'[]'); return Object.prototype.toString.call(s) === '[object Array]' ? s : []; }catch(e){ return []; } }
+function isSaved(slug){ return getSaved().indexOf(slug) >= 0; }
+function toggleSaved(slug){
+  var s = getSaved(), i = s.indexOf(slug);
+  if(i >= 0) s.splice(i, 1); else s.unshift(slug);
+  try{ localStorage.setItem('fudgio_saved', JSON.stringify(s.slice(0, 40))); }catch(e){}
+  emit();
+  return i < 0;
+}
+/* ---------------- recently viewed ---------------- */
+function getRecent(){ try{ var s = JSON.parse(localStorage.getItem('fudgio_recent')||'[]'); return Object.prototype.toString.call(s) === '[object Array]' ? s : []; }catch(e){ return []; } }
+function noteViewed(slug){ var s = getRecent().filter(function(x){ return x !== slug; }); s.unshift(slug); try{ localStorage.setItem('fudgio_recent', JSON.stringify(s.slice(0, 12))); }catch(e){} }
 function dealLeft(){ return Math.max(0, Math.max(2, FUDGIO.bundleQty|0) - cartUnits()); }
 function addToCart(p, qty){
   qty = Math.max(1, qty|0);
@@ -191,19 +238,23 @@ function shipLine(region){
 }
 
 /* ---------------- templates (shared with the build) ---------------- */
+var HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-9.2-8.6C1.2 8.2 3 4.8 6.4 4.5c2.1-.2 3.9 1 5.6 3 1.7-2 3.5-3.2 5.6-3 3.4.3 5.2 3.7 3.6 6.9C19 15.6 12 20 12 20z"/></svg>';
 function productCardHTML(p){
   var out = !inStock(p), n = HAS_DOM ? qtyInBag(p.slug) : 0;
   var flag = out ? '<span class="flag">Sold out</span>'
     : (p.stock !== undefined && p.stock <= 8 ? '<span class="flag pink">Only '+p.stock+' left</span>' : '');
   var btn = out ? '<button type="button" class="add-btn" disabled>Sold out</button>'
-    : '<button type="button" class="add-btn'+(n?' in':'')+'" data-add="'+esc(p.slug)+'" aria-label="Add '+esc(p.name)+' to bag">'
-      + (n ? 'In bag ('+n+')<span class="more"> · Add another</span><span class="plus" aria-hidden="true"> +</span>' : 'Add to bag') + '</button>';
+    : n ? '<div class="card-qty" role="group" aria-label="'+esc(p.name)+' in your bag"><button type="button" data-card-dec="'+esc(p.slug)+'" aria-label="One fewer '+esc(p.name)+'">−</button>'
+          +'<span><b>'+n+'</b> in bag</span><button type="button" data-add="'+esc(p.slug)+'" aria-label="One more '+esc(p.name)+'">+</button></div>'
+    : '<button type="button" class="add-btn" data-add="'+esc(p.slug)+'" aria-label="Add '+esc(p.name)+' to bag">Add to bag</button>';
+  var saved = HAS_DOM && isSaved(p.slug);
+  var fav = '<button type="button" class="fav'+(saved?' on':'')+'" data-fav="'+esc(p.slug)+'" aria-pressed="'+saved+'" aria-label="'+(saved?'Remove '+esc(p.name)+' from':'Save '+esc(p.name)+' to')+' favourites">'+HEART+'</button>';
   return '<article class="card'+(out?' is-sold-out':'')+'" data-slug="'+esc(p.slug)+'">'
     +'<div class="tile'+(p.image ? ' photo' : (renders(p) ? ' render' : ''))+'">'
       +(p.image ? imgTag(p.image, '', false) + (p.photos && p.photos[1] ? imgTag(p.photos[1], '', false, 'alt-img') : '')
         : renders(p) ? cutHTML(p, { big: true, sizes: '(max-width:640px) 45vw, 300px' }) + '<div class="rd alt-img">'+imgTag(renderSrc(p, 'fold'), '', false, '', renderSrc(p, 'fold', true) + ' 480w, ' + renderSrc(p, 'fold') + ' 1000w', '(max-width:640px) 45vw, 300px')+'</div>'
         : artHTML(p))
-      +flag+'</div>'
+      +flag+fav+'</div>'
     +'<div class="card-meta"><h3 class="card-name"><a href="'+p.path+'">'+esc(p.name)+'</a></h3>'
     +'<span class="card-price">'+money(unitPrice(p))+'</span></div>'
     +btn+'</article>';
@@ -248,7 +299,10 @@ var ICONS = {
   cash: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v5M17.5 9.5v5"/></svg>',
   swap: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h13l-3-3M20 15H7l3 3"/></svg>',
   chat: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8M8 13h5"/></svg>',
-  lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>'
+  lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+  share: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1"/></svg>',
+  ruler: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3M10.5 8v4M14.5 8v3M18.5 8v4"/></svg>',
+  wa: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4A8 8 0 1 1 8.4 19z"/><path d="M9 8.5c.3 2.6 2.5 5 5.5 5.6l1-1.2-1.8-.9-.8.8c-1-.5-1.8-1.3-2.3-2.3l.8-.8-.9-1.8z"/></svg>'
 };
 function trustHTML(){
   return '<ul class="trust" id="pdTrust">'
@@ -293,16 +347,21 @@ function productPageHTML(p){
     +'</div>'
     +'<div class="pd-info">'
       +'<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/shop">Shop</a><span class="sep">/</span><span>'+esc(p.name)+'</span></nav>'
-      +'<div style="display:flex;flex-direction:column;gap:14px"><p class="eyebrow">Printed bandana · 55 cm square</p><h1 class="h1">'+esc(p.name)+'</h1></div>'
+      +'<div style="display:flex;flex-direction:column;gap:14px"><p class="eyebrow">Printed bandana · 55 cm square · <button type="button" class="link-btn eyebrow-link" data-size-guide>Size guide</button></p><h1 class="h1">'+esc(p.name)+'</h1></div>'
       +'<div class="pd-price" id="pdPrice">'+money(unitPrice(p))+' <small id="pdPay">'+(isPK()?'Cash on delivery':'Paid before it ships')+'</small></div>'
       +'<p class="pd-desc">'+esc(p.desc)+'</p>'
       +'<div class="swatch-row"><span class="lbl">Colour <b>'+esc(p.name)+'</b></span><div class="swatches" id="pdSw">'+swatchesHTML(p)+'</div></div>'
       +'<div class="stock-line" id="pdStock">In stock</div>'
+      +'<p class="arrive" id="pdArrive"></p>'
       +'<div class="buy"><div class="stepper" role="group" aria-label="Quantity"><button type="button" id="pdMinus" aria-label="One fewer">−</button><span id="pdQty">1</span><button type="button" id="pdPlus" aria-label="One more">+</button></div>'
         +'<button type="button" class="btn btn-primary" id="pdAdd">Add to bag</button></div>'
       +'<button type="button" class="btn btn-outline btn-block" id="pdBuy">Buy it now</button>'
+      +'<div class="pd-tools"><button type="button" class="tool-btn" data-fav="'+esc(p.slug)+'" aria-pressed="false">'+HEART+'<span>Save</span></button>'
+        +'<button type="button" class="tool-btn" data-share>'+ICONS.share+'<span>Share</span></button>'
+        +'<button type="button" class="tool-btn" data-size-guide>'+ICONS.ruler+'<span>Size guide</span></button></div>'
       +'<div class="pd-rating" id="pdRating" hidden></div>'
       +trustHTML()
+      +'<div class="look3" id="pdLook" hidden></div>'
       +'<div class="deal-note" id="pdDeal"><span class="pct" data-pct-badge>'+(FUDGIO.bundlePct|0)+'%</span><div><b data-deal-line>Buy any '+FUDGIO.bundleQty+', save '+FUDGIO.bundlePct+'%.</b> Mix any colours — the discount is applied automatically in your bag.</div></div>'
       +'<div class="acc">'
         +'<details open><summary>Details</summary><div class="a"><ul>'+details.map(function(d){ return '<li>'+esc(d)+'</li>'; }).join('')+'</ul></div></details>'
@@ -326,15 +385,30 @@ function bagLinesHTML(){
   }).join('');
 }
 function totalsHTML(){
-  var sub = cartSubtotal(), disc = cartDiscount(), ship = cartDelivery();
+  var sub = cartSubtotal(), disc = cartDiscount(), cd = couponDiscount(), ship = cartDelivery(), c = getCoupon();
   var html = '<div class="srow"><span>Subtotal</span><b>'+money(sub)+'</b></div>';
   if(disc) html += '<div class="srow save"><span>Bundle deal ('+FUDGIO.bundlePct+'% off)</span><b>−'+money(disc)+'</b></div>';
+  if(c) html += '<div class="srow save code-row"><span>Code <b class="code">'+esc(c.code)+'</b> '+(couponShort() ? '<small>needs '+couponShort()+' more</small>' : '<small>'+esc(c.label || '')+'</small>')
+    +' <button type="button" class="link-btn" data-coupon-remove aria-label="Remove code">Remove</button></span><b>'+(cd ? '−'+money(cd) : (couponFreeShip() ? 'Free delivery' : '—'))+'</b></div>';
   html += '<div class="srow"><span>'+(isPK()?'Delivery in Pakistan':'Shipping worldwide')+'</span><b>'+(ship===0?'Free':money(ship))+'</b></div>';
-  html += '<div class="srow tot"><span>Total</span><b>'+money(sub-disc+ship)+'</b></div>';
+  html += '<div class="srow tot"><span>Total</span><b>'+money(cartTotal())+'</b></div>';
   return html;
 }
+/* "Have a code?" — opens to a field; a code that works goes into the totals. */
+function couponFormHTML(){
+  if(getCoupon()) return '';
+  return '<details class="code-box"><summary>Have a discount code?</summary><form data-coupon-form novalidate><div class="code-row-in">'
+    +'<input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. WELCOME10" aria-label="Discount code"/>'
+    +'<button type="submit" class="btn btn-dark btn-sm">Apply</button></div><p class="err" role="alert"></p></form></details>';
+}
+/* The arrival dates and the free-delivery bar, for the drawer and the bag page. */
+function arrivalHTML(){
+  var w = deliveryWindow(), left = freeShipLeft(), t = isPK() ? FUDGIO.freeOver : FUDGIO.intlFreeOver, after = cartSubtotal() - cartDiscount() - couponDiscount();
+  return (w ? '<p class="arrive">'+ICONS.truck+'<span>Order today, arrives <b>'+esc(w)+'</b></span></p>' : '')
+    + (left ? '<div class="ship-meter"><span>'+money(left)+' away from free '+(isPK()?'delivery':'shipping')+'</span><div class="bar"><i style="width:'+Math.min(100, after/t*100)+'%"></i></div></div>' : '');
+}
 function nudgeText(){
-  var after = cartSubtotal() - cartDiscount();
+  var after = cartSubtotal() - cartDiscount() - couponDiscount();
   if(dealLeft() && FUDGIO.bundlePct) return dealLine()+'. Mix any colours.';
   if(isPK() && FUDGIO.deliveryFee && FUDGIO.freeOver > after) return money(FUDGIO.freeOver - after)+' away from free delivery.';
   if(!isPK() && FUDGIO.intlShipping && FUDGIO.intlFreeOver > after) return money(FUDGIO.intlFreeOver - after)+' away from free shipping.';
@@ -377,6 +451,108 @@ function api(method, url, data, cb){
   x.onerror = x.ontimeout = function(){ cb(false, { error: 'Network error. Please check your connection and try again.' }); };
   x.send(data ? JSON.stringify(data) : null);
 }
+
+/* ---- "added to your bag": what just went in, the deal, and the next step ---- */
+var _addedT;
+function showAdded(p, qty){
+  if(!HAS_DOM || !p) return;
+  var el = document.getElementById('added');
+  if(!el){
+    el = document.createElement('div'); el.id = 'added'; el.className = 'added'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+    document.body.appendChild(el);
+    el.addEventListener('mouseenter', function(){ clearTimeout(_addedT); });
+    el.addEventListener('mouseleave', function(){ _addedT = setTimeout(hideAdded, 2500); });
+    el.addEventListener('click', function(e){ if(e.target.closest('[data-added-close]')) hideAdded(); if(e.target.closest('a')) hideAdded(); });
+  }
+  var q = Math.max(2, FUDGIO.bundleQty|0), n = cartUnits(), left = dealLeft();
+  el.innerHTML = '<div class="added-top"><span class="ok" aria-hidden="true">✓</span><b>Added to your bag</b><button type="button" class="x" data-added-close aria-label="Close">×</button></div>'
+    +'<div class="added-item"><span class="t">'+lineArt({ id: p.slug, name: p.name, color: p.color, ink: p.ink })+'</span><div><b>'+(qty > 1 ? qty+' × ' : '')+esc(p.name)+'</b><span>55 cm square · '+money(unitPrice(p) * (qty || 1))+'</span></div></div>'
+    +(FUDGIO.bundlePct ? '<div class="added-deal"><span>'+(left ? 'Add <b>'+left+' more</b> to save '+FUDGIO.bundlePct+'%' : '<b>'+FUDGIO.bundlePct+'% off</b> is on — nice')+'</span><div class="bar"><i style="width:'+Math.min(100, n/q*100)+'%"></i></div></div>' : '')
+    +'<div class="added-actions"><a href="/cart" class="btn btn-ghost btn-sm" data-open-bag>View bag ('+n+')</a><a href="/checkout" class="btn btn-primary btn-sm">Checkout</a></div>';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  clearTimeout(_addedT); _addedT = setTimeout(hideAdded, 6000);
+}
+function hideAdded(){ var el = document.getElementById('added'); if(el) el.classList.remove('show'); }
+
+/* ---- a small modal, for the size guide ---- */
+function openModal(html, label){
+  var m = document.getElementById('modal');
+  if(!m){
+    m = document.createElement('div'); m.id = 'modal'; m.className = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
+    m.innerHTML = '<div class="modal-bg" data-modal-close></div><div class="modal-box"><button type="button" class="x-btn" data-modal-close aria-label="Close">×</button><div class="modal-body"></div></div>';
+    document.body.appendChild(m);
+    m.addEventListener('click', function(e){ if(e.target.closest('[data-modal-close]')) closeModal(); });
+    document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeModal(); });
+  }
+  m.setAttribute('aria-label', label || 'Details');
+  m.querySelector('.modal-body').innerHTML = html;
+  _lastFocus = document.activeElement;
+  document.body.classList.add('modal-open', 'lock');
+  setTimeout(function(){ m.querySelector('.x-btn').focus(); }, 50);
+}
+function closeModal(){ if(!document.body.classList.contains('modal-open')) return; document.body.classList.remove('modal-open', 'lock'); if(_lastFocus && _lastFocus.focus) _lastFocus.focus(); }
+function sizeGuideHTML(){
+  return '<p class="eyebrow">Size guide</p><h2 class="h3" style="margin:8px 0 18px">One size: 55 × 55 cm</h2>'
+    +'<svg class="size-svg" viewBox="0 0 560 250" aria-hidden="true">'
+      +'<rect x="30" y="30" width="190" height="190" rx="3" fill="#FF6A13"/><path d="M30 238H220M30 232v12M220 232v12M238 30V220M232 30h12M232 220h12" stroke="currentColor" stroke-width="2"/>'
+      +'<text x="125" y="248" text-anchor="middle" font-size="14" fill="currentColor">55 cm</text><text x="262" y="130" font-size="14" fill="currentColor">55 cm</text>'
+      +'<path d="M320 60H540L430 170Z" fill="#FF2E88"/><path d="M320 44H540M320 38v12M540 38v12" stroke="currentColor" stroke-width="2"/>'
+      +'<text x="430" y="32" text-anchor="middle" font-size="14" fill="currentColor">about 78 cm when folded</text></svg>'
+    +'<div class="prose" style="max-width:none;font-size:1rem"><ul>'
+      +'<li><b>On the head:</b> folded corner to corner, the long edge is about 78 cm — round most heads with enough left to knot.</li>'
+      +'<li><b>Round the neck:</b> fold, then roll to a 5 cm band. Ties loose at the front or close at the side.</li>'
+      +'<li><b>On the wrist or a bag:</b> roll it thin; it wraps twice round a wrist.</li></ul>'
+      +'<p>Every colour is the same size. <a href="/care">Fabric and care</a></p></div>';
+}
+
+/* ---- the gallery, full screen: tap to zoom, swipe or arrows to move ---- */
+var LB = null;
+function lightboxItems(p){
+  var r = renders(p);
+  return stageViews(p).map(function(v){
+    if(v.photo) return { html: '<img src="'+esc(v.photo)+'" alt="'+esc(p.name)+' bandana"/>', label: v.label };
+    if(v.key === 'worn') return { html: personSVG({ style: 'neck', color: p.color, ink: p.ink, bg: '#FF6A13', skin: '#E2B48F', skinShade: '#C48F6A', hair: '#3B2416', shirt: '#F4F1EC', idSuffix: 'lb' + p.slug }), label: v.label };
+    if(r) return { html: '<img src="'+esc(r[v.key === 'zoom' ? 'detail' : v.key])+'" alt="'+esc(p.name)+' bandana, '+v.label.toLowerCase()+'"/>', label: v.label, render: true };
+    return { html: bandanaSVG(p.color, p.ink), label: v.label };
+  });
+}
+function openLightbox(p, i){
+  if(!HAS_DOM || !p) return;
+  var el = document.getElementById('lightbox');
+  if(!el){
+    el = document.createElement('div'); el.id = 'lightbox'; el.className = 'lightbox'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Photos');
+    el.innerHTML = '<button type="button" class="x-btn lb-x" aria-label="Close">×</button><button type="button" class="lb-nav lb-prev" aria-label="Previous">‹</button>'
+      +'<figure class="lb-fig"></figure><button type="button" class="lb-nav lb-next" aria-label="Next">›</button><p class="lb-cap"></p>';
+    document.body.appendChild(el);
+    var fig = el.querySelector('.lb-fig'), sx = 0;
+    el.querySelector('.lb-x').onclick = closeLightbox;
+    el.querySelector('.lb-prev').onclick = function(){ showLb(LB.i - 1); };
+    el.querySelector('.lb-next').onclick = function(){ showLb(LB.i + 1); };
+    el.addEventListener('click', function(e){ if(e.target === el) closeLightbox(); });
+    fig.addEventListener('click', function(e){
+      if(fig.classList.contains('zoom')){ fig.classList.remove('zoom'); fig.style.transformOrigin = ''; return; }
+      var b = fig.getBoundingClientRect(); fig.style.transformOrigin = ((e.clientX - b.left) / b.width * 100) + '% ' + ((e.clientY - b.top) / b.height * 100) + '%'; fig.classList.add('zoom');
+    });
+    fig.addEventListener('pointermove', function(e){ if(!fig.classList.contains('zoom') || e.pointerType !== 'mouse') return; var b = fig.getBoundingClientRect(); fig.style.transformOrigin = ((e.clientX - b.left) / b.width * 100) + '% ' + ((e.clientY - b.top) / b.height * 100) + '%'; });
+    el.addEventListener('touchstart', function(e){ sx = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener('touchend', function(e){ var dx = e.changedTouches[0].clientX - sx; if(Math.abs(dx) > 50 && !fig.classList.contains('zoom')) showLb(LB.i + (dx < 0 ? 1 : -1)); });
+    document.addEventListener('keydown', function(e){ if(!LB || !document.body.classList.contains('lb-open')) return; if(e.key === 'Escape') closeLightbox(); if(e.key === 'ArrowRight') showLb(LB.i + 1); if(e.key === 'ArrowLeft') showLb(LB.i - 1); });
+  }
+  LB = { items: lightboxItems(p), i: 0 };
+  _lastFocus = document.activeElement;
+  document.body.classList.add('lb-open', 'lock');
+  showLb(i || 0);
+  setTimeout(function(){ el.querySelector('.lb-x').focus(); }, 50);
+}
+function showLb(i){
+  var el = document.getElementById('lightbox'), n = LB.items.length; i = (i + n) % n; LB.i = i;
+  var it = LB.items[i], fig = el.querySelector('.lb-fig');
+  fig.className = 'lb-fig' + (it.render ? ' is-render' : ''); fig.style.transformOrigin = '';
+  fig.innerHTML = it.html;
+  el.querySelector('.lb-cap').textContent = it.label + ' · ' + (i + 1) + ' / ' + n + ' · tap to zoom';
+  el.querySelector('.lb-prev').hidden = el.querySelector('.lb-next').hidden = n < 2;
+}
+function closeLightbox(){ document.body.classList.remove('lb-open', 'lock'); if(_lastFocus && _lastFocus.focus) _lastFocus.focus(); }
 
 /* ---- bag drawer ---- */
 var _lastFocus = null;
@@ -433,11 +609,11 @@ function renderDrawer(){
   }
   document.getElementById('dwBody').innerHTML = bagLinesHTML() + upsell;
   var blocked = cart.some(shortOf), nudge = nudgeText();
-  document.getElementById('dwFoot').innerHTML = totalsHTML()
-    + (nudge ? '<p class="pay-note" style="color:var(--pink-2)">'+esc(nudge)+'</p>' : '')
+  document.getElementById('dwFoot').innerHTML = arrivalHTML() + totalsHTML() + couponFormHTML()
     + (blocked ? '<button class="btn btn-primary btn-block" disabled>Checkout</button>'
                : '<a class="btn btn-primary btn-block" href="/checkout">Checkout <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>')
-    + '<p class="pay-note">'+(isPK() ? 'Cash on delivery · pay when it arrives' : 'Prices in USD · paid before it ships')+'</p>';
+    + '<p class="pay-note">'+(isPK() ? 'Cash on delivery · pay when it arrives' : 'Prices in USD · paid before it ships')
+    + ' · <button type="button" class="link-btn" data-clear-bag>Clear bag</button></p>';
 }
 function bindLineButtons(root){
   root.addEventListener('click', function(e){
@@ -554,6 +730,14 @@ function paintHeader(){
   Array.prototype.forEach.call(document.querySelectorAll('[data-ig]'), function(el){
     if(FUDGIO.instagram){ el.hidden = false; el.href = 'https://instagram.com/'+encodeURIComponent(FUDGIO.instagram); if(el.hasAttribute('data-ig-handle')) el.textContent = '@'+FUDGIO.instagram; } else el.hidden = true;
   });
+  var sc = document.getElementById('savedCount'); if(sc){ var ns = getSaved().length; sc.textContent = ns; sc.hidden = !ns; }
+  var wa = document.getElementById('waFloat');
+  if(FUDGIO.whatsapp && !wa && !/^\/(checkout)$/.test(location.pathname.replace(/\/$/,''))){
+    wa = document.createElement('a'); wa.id = 'waFloat'; wa.className = 'wa-float'; wa.target = '_blank'; wa.rel = 'noopener';
+    wa.setAttribute('aria-label', 'Chat with us on WhatsApp'); wa.innerHTML = ICONS.wa + '<span>Chat with us</span>';
+    document.body.appendChild(wa);
+  }
+  if(wa){ var wp = PD && getProduct(PD.slug); wa.href = 'https://wa.me/' + FUDGIO.whatsapp + '?text=' + encodeURIComponent('Hi Fudgio! ' + (wp ? 'I have a question about the ' + wp.name + ' bandana.' : 'I have a question.')); wa.hidden = !FUDGIO.whatsapp; }
   Array.prototype.forEach.call(document.querySelectorAll('[data-wa]'), function(el){
     if(FUDGIO.whatsapp){ el.hidden = false; el.href = 'https://wa.me/'+FUDGIO.whatsapp; } else el.hidden = true;
   });
@@ -612,6 +796,13 @@ function paintBits(){
   set('[data-grid]', function(el){
     var ex = el.getAttribute('data-exclude'), lim = +el.getAttribute('data-limit') || 0;
     var list = visibleProducts().filter(function(p){ return p.slug !== ex; });
+    var only = el.getAttribute('data-only-list');
+    if(only === 'saved' || only === 'recent'){
+      var ids = only === 'saved' ? getSaved() : getRecent();
+      list = ids.map(getProduct).filter(function(p){ return p && !p.hidden && p.slug !== ex; });
+      var wrap = el.closest('[data-hide-empty]'); if(wrap) wrap.hidden = !list.length;
+      var em = document.querySelector('[data-empty-for="'+only+'"]'); if(em) em.hidden = !!list.length;
+    }
     if(lim) list = list.slice(0, lim);
     el.innerHTML = list.map(productCardHTML).join('');
     revealIn(el);
@@ -619,13 +810,64 @@ function paintBits(){
   if(document.getElementById('drawer')) renderDrawer();
 }
 
+/* Three colours that go together, starting from this one. */
+function suggestTwo(p){
+  var v = visibleProducts().filter(function(x){ return x.slug !== p.slug && inStock(x); });
+  if(v.length < 2) return v;
+  var all = visibleProducts(), i = Math.max(0, all.indexOf(p));
+  var pick = [all[(i + 2) % all.length], all[(i + 5) % all.length]].filter(function(x){ return x && x.slug !== p.slug && inStock(x); });
+  v.forEach(function(x){ if(pick.length < 2 && pick.indexOf(x) < 0) pick.push(x); });
+  return pick.slice(0, 2);
+}
+function lookHTML(p){
+  var q = Math.max(2, FUDGIO.bundleQty|0); if(!FUDGIO.bundlePct || q !== 3) return '';
+  var trio = [p].concat(suggestTwo(p)); if(trio.length < 3) return '';
+  var full = trio.reduce(function(s, x){ return s + unitPrice(x); }, 0), off = Math.round(full * FUDGIO.bundlePct / 100);
+  return '<p class="lbl">Complete your three</p><div class="look3-row">'
+    + trio.map(function(x, k){ return '<a class="look3-item" href="'+x.path+'"'+(k?'':' aria-current="true"')+'>'+cutHTML(x)+'<span>'+esc(x.name)+'</span></a>'+(k < 2 ? '<span class="plus" aria-hidden="true">+</span>' : ''); }).join('')
+    + '</div><div class="look3-buy"><span><s>'+money(full)+'</s> <b>'+money(full - off)+'</b> for all three</span>'
+    + '<button type="button" class="btn btn-dark btn-sm" data-add-set="'+trio.map(function(x){ return x.slug; }).join(',')+'">Add all three</button></div>';
+}
+
 /* ---- the product page ---- */
 var PD = null;
+/* Switch colour without leaving the page: same layout, new bandana, its own
+   URL (the static page for it exists, so a reload or a shared link lands
+   on the same thing). Back and forward step through the colours. */
+function switchProduct(slug, push){
+  var p = getProduct(slug), root = document.querySelector('[data-pd-root]'); if(!p || !root || !PD) return;
+  if(push && location.pathname !== p.path) history.pushState({ slug: slug }, '', p.path);
+  PD = { slug: slug, qty: 1 };
+  var y = scrollY;
+  root.innerHTML = productPageHTML(p);
+  scrollTo(0, y);
+  document.title = p.name + ' Bandana — 100% Cotton, 55 cm | Fudgio';
+  Array.prototype.forEach.call(document.querySelectorAll('[data-grid][data-exclude]'), function(g){ g.setAttribute('data-exclude', slug); });
+  var rv = document.getElementById('reviews'); if(rv){ rv.hidden = true; rv.setAttribute('data-reviews', slug); }
+  noteViewed(slug);
+  watchBuy();
+  emit(); loadReviews();
+}
+var _buyIO = null;
+function watchBuy(){
+  var bar = document.getElementById('buyBar'), add = document.getElementById('pdAdd');
+  if(!bar || !add || !('IntersectionObserver' in window)) return;
+  if(_buyIO) _buyIO.disconnect();
+  _buyIO = new IntersectionObserver(function(es){ es.forEach(function(e){ bar.classList.toggle('show', !e.isIntersecting && e.boundingClientRect.top < 0); }); });
+  _buyIO.observe(add);
+}
 function initProduct(slug){
   var root = document.querySelector('[data-pd-root]'); if(!root) return;
   PD = { slug: slug, qty: 1 };
   if(!root.querySelector('.pd') && getProduct(slug)) root.innerHTML = productPageHTML(getProduct(slug));
+  if(slug) noteViewed(slug);
+  history.replaceState({ slug: slug }, '', location.href);
+  addEventListener('popstate', function(e){ if(e.state && e.state.slug && PD && e.state.slug !== PD.slug) switchProduct(e.state.slug, false); });
   root.addEventListener('click', function(e){
+    var sw = e.target.closest('#pdSw .sw');
+    if(sw && !e.metaKey && !e.ctrlKey){ var to = sw.getAttribute('href'), m = to && to.match(/\/bandanas\/([^/?#]+)|[?&]c=([^&#]+)/); if(m){ e.preventDefault(); switchProduct(decodeURIComponent(m[1] || m[2]), true); } return; }
+    var stage = e.target.closest('#pdStage');
+    if(stage && PD){ var cur = stage.querySelector('.v.on'), all = Array.prototype.slice.call(stage.querySelectorAll('.v')); openLightbox(getProduct(PD.slug), Math.max(0, all.indexOf(cur))); return; }
     var t = e.target.closest('button'); if(!t || !PD) return;
     var p = getProduct(PD.slug); if(!p) return;
     if(t.classList.contains('view-btn')){
@@ -644,11 +886,9 @@ function initProduct(slug){
   var bar = document.createElement('div');
   bar.className = 'buy-bar'; bar.id = 'buyBar';
   bar.innerHTML = '<div class="bb-name"><b></b><span></span></div><button type="button" class="btn btn-primary">Add to bag</button>';
-  bar.querySelector('button').onclick = function(){ var p = getProduct(PD.slug); if(p && addToCart(p, 1)) openBag(); };
+  bar.querySelector('button').onclick = function(){ var p = getProduct(PD.slug); if(p && addToCart(p, 1)){ showAdded(p, 1); } };
   document.body.appendChild(bar); document.body.classList.add('has-buy-bar');
-  if('IntersectionObserver' in window){
-    new IntersectionObserver(function(es){ es.forEach(function(e){ bar.classList.toggle('show', !e.isIntersecting && e.boundingClientRect.top < 0); }); }).observe(document.getElementById('pdAdd') || root);
-  }
+  watchBuy();
   onChange(paintProduct);
   paintProduct();
 }
@@ -680,6 +920,10 @@ function paintProduct(){
   st.textContent = out ? 'Sold out — back soon' : (p.stock !== undefined && p.stock <= 8 ? 'Only '+p.stock+' left' : 'In stock')
     + (out ? '' : ' · '+(isPK() ? 'delivered in '+FUDGIO.daysPk+' days across Pakistan' : 'ships worldwide in '+FUDGIO.daysIntl+' days'));
   $('pdQty').textContent = PD.qty;
+  var ar = $('pdArrive'), w = deliveryWindow();
+  if(ar){ ar.hidden = out || !w; ar.innerHTML = ICONS.truck + '<span>Order today, arrives <b>'+esc(w)+'</b>'+(isPK() ? ' · cash on delivery' : '')+'</span>'; }
+  Array.prototype.forEach.call(root.querySelectorAll('.pd [data-fav]'), function(b){ var on = isSaved(p.slug); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); var t = b.querySelector('span'); if(t) t.textContent = on ? 'Saved' : 'Save'; });
+  var lk = $('pdLook'); if(lk){ var lh = lookHTML(p); if(lk.getAttribute('data-k') !== lh){ lk.setAttribute('data-k', lh); lk.innerHTML = lh; } lk.hidden = !lh; }
   $('pdAdd').disabled = out; $('pdBuy').disabled = out;
   $('pdAdd').textContent = out ? 'Sold out' : 'Add to bag — '+money(unit*PD.qty);
   var dl = root.querySelector('[data-deal-line]');
@@ -797,10 +1041,35 @@ if(HAS_DOM) (function(){
           var card = add.closest('.card');
           flyToBag(card && card.querySelector('.tile .bn, .tile img'));
           celebrateIfUnlocked(before);
-          var left = dealLeft();
-          toast(pr.name+' added'+(FUDGIO.bundlePct ? (left ? ' — '+left+' more for '+FUDGIO.bundlePct+'% off' : ' — '+FUDGIO.bundlePct+'% off unlocked') : ''), { label: 'View bag', fn: openBag });
+          if(!add.closest('#drawer')) showAdded(pr, 1);
         }
+        return;
       }
+      var dec = e.target.closest('[data-card-dec]');
+      if(dec){ var ds = dec.getAttribute('data-card-dec'); setQty(ds, qtyInBag(ds) - 1); return; }
+      var set = e.target.closest('[data-add-set]');
+      if(set){
+        var b1 = cartUnits(), okAll = true, last = null;
+        set.getAttribute('data-add-set').split(',').forEach(function(sl){ var pp = getProduct(sl); if(pp){ if(addToCart(pp, 1)) last = pp; else okAll = false; } });
+        if(okAll){ celebrateIfUnlocked(b1); openBag(); }
+        return;
+      }
+      var fv = e.target.closest('[data-fav]');
+      if(fv){ var on = toggleSaved(fv.getAttribute('data-fav')); toast(on ? 'Saved to your favourites' : 'Removed from favourites', on ? { label: 'See all', fn: function(){ location.href = '/saved'; } } : null); return; }
+      if(e.target.closest('[data-coupon-remove]')){ setCoupon(null); toast('Code removed'); return; }
+      if(e.target.closest('[data-clear-bag]')){ if(confirm('Empty your bag?')){ saveCart([]); } return; }
+      if(e.target.closest('[data-size-guide]')){ openModal(sizeGuideHTML(), 'Size guide'); return; }
+      if(e.target.closest('[data-share]')){
+        var sp = PD && getProduct(PD.slug), url = location.href, text = sp ? 'The '+sp.name+' bandana from Fudgio' : 'Fudgio bandanas';
+        if(navigator.share){ navigator.share({ title: text, text: text, url: url }).catch(function(){}); return; }
+        openModal('<p class="eyebrow">Share</p><h2 class="h3" style="margin:8px 0 18px">'+esc(text)+'</h2><div class="share-row">'
+          +'<a class="btn btn-primary btn-sm" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent(text+' '+url)+'">WhatsApp</a>'
+          +'<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(url)+'">Facebook</a>'
+          +'<button type="button" class="btn btn-ghost btn-sm" data-copy="'+esc(url)+'">Copy link</button></div>', 'Share');
+        return;
+      }
+      var cp = e.target.closest('[data-copy]');
+      if(cp){ var u = cp.getAttribute('data-copy'); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function(){ cp.textContent = 'Copied ✓'; }, function(){ prompt('Copy this link:', u); }); return; }
     });
     if(hdr){ var onScroll = function(){ hdr.classList.toggle('scrolled', scrollY > 8); }; addEventListener('scroll', onScroll, { passive: true }); onScroll(); }
     var here = location.pathname.replace(/\/$/,'') || '/';
@@ -820,6 +1089,20 @@ if(HAS_DOM) (function(){
       art.addEventListener('pointerleave', function(){ Array.prototype.forEach.call(art.querySelectorAll('.float .hero-bn'), function(b){ b.style.setProperty('--px','0px'); b.style.setProperty('--py','0px'); }); });
     }
 
+    // discount codes, from the drawer, the bag page or checkout
+    document.addEventListener('submit', function(e){
+      var f = e.target.closest('[data-coupon-form]'); if(!f) return;
+      e.preventDefault();
+      var code = (f.elements.code.value || '').trim(), er = f.querySelector('.err'), b = f.querySelector('button');
+      if(!code){ er.textContent = 'Type your code first.'; return; }
+      b.disabled = true; er.textContent = '';
+      api('POST', '/api/coupon', { code: code, units: cartUnits() }, function(ok, d){
+        b.disabled = false;
+        if(!ok){ er.textContent = d.error || 'That code did not work.'; return; }
+        setCoupon(d); toast('Code '+d.code+' applied — '+d.label);
+      });
+    });
+
     // newsletter
     Array.prototype.forEach.call(document.querySelectorAll('form[data-news]'), function(f){
       f.addEventListener('submit', function(e){
@@ -831,6 +1114,11 @@ if(HAS_DOM) (function(){
           btn.disabled = false;
           msg.className = 'news-msg ' + (ok ? 'ok' : 'bad');
           msg.textContent = ok ? 'You’re on the list. We’ll email you when new colours drop.' : (d.error || 'That did not work. Please try again.');
+          if(ok && d.code){
+            msg.innerHTML = 'You’re on the list. Here’s <b>'+esc(d.codeLabel)+'</b> your first order: <b class="code">'+esc(d.code)+'</b> <button type="button" class="link-btn" data-apply-code="'+esc(d.code)+'">Use it now</button>';
+            var ab = msg.querySelector('[data-apply-code]');
+            ab.onclick = function(){ api('POST', '/api/coupon', { code: d.code, units: cartUnits() }, function(ok2, c){ if(ok2){ setCoupon(c); ab.textContent = 'Added to your bag ✓'; ab.disabled = true; } else toast(c.error || 'Could not add the code'); }); };
+          }
           if(ok) inp.value = '';
         });
       });

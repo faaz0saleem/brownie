@@ -74,6 +74,7 @@ const src = (f) => `/${f}?v=${V[f] || '0'}`;
 const e = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ARROW = '<svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 const mark = S.bandanaSVG('#FF6A13', '#FFFFFF');
+const HEART_SVG = S.HEART;
 
 /* ---------------- shared layout ---------------- */
 function head(m) {
@@ -132,11 +133,13 @@ function header() {
       <a class="nav-link" href="/#bundle">Bundle deal</a>
       <a class="nav-link m-only m-gap" href="/track">Track your order</a>
       <a class="nav-link m-only" href="/shipping">Delivery &amp; returns</a>
+      <a class="nav-link m-only" href="/saved">Favourites</a>
       <a class="nav-link m-only" href="/faq">FAQ</a>
       <a class="nav-link m-only" href="/contact">Contact</a>
     </nav>
     <div class="nav-tools">
       <button type="button" class="cur-btn" id="curBtn">PKR ₨</button>
+      <a href="/saved" class="fav-link" aria-label="Favourites">${HEART_SVG}<span class="n" id="savedCount" hidden>0</span></a>
       <a href="/cart" class="bag-btn" id="bagBtn" aria-label="Your bag"><span class="bag-word">Bag</span><span class="bag-count" id="cartCount">0</span></a>
       <button type="button" class="menu-btn" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="navLinks"><span></span></button>
     </div>
@@ -300,6 +303,16 @@ const reviewsSection = (slug, title = 'What people say') => `<section class="pap
   <div class="sec-head"><div class="stack"><p class="eyebrow">Reviews</p><h2 class="h2" id="revTitle">${title}</h2></div><p>Every review is from someone who ordered, checked against their order.</p></div>
   <div class="rev-sum" data-review-sum></div><div class="reviews" data-review-list></div>
 </div></section>`;
+const STEPS = [
+  ['Pick your colours', `Any ${D.bundleQty} take ${D.bundlePct}% off. Mix them however you like.`, '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><path d="M16.5 13.5v6M13.5 16.5h6"/></svg>'],
+  ['We pack and send', `Delivered in <span data-days-pk>${D.daysPk}</span> working days across Pakistan, or shipped worldwide in <span data-days-intl>${D.daysIntl}</span>.`, '<svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></svg>'],
+  ['Pay when it arrives', 'Cash to the rider in Pakistan — nothing up front. Abroad, a secure payment link before it ships.', '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v5M17.5 9.5v5"/></svg>'],
+];
+const howItWorks = () => `<section class="paper" aria-labelledby="howTitle"><div class="wrap sec">
+  <div class="sec-head"><div class="stack"><p class="eyebrow">How it works</p><h2 class="h2" id="howTitle">Simple from bag to door.</h2></div>
+    <p>No account, no card needed in Pakistan. Track your order any time with its number.</p></div>
+  <div class="steps3">${STEPS.map(([h, t, ic], i) => `<div class="step3 reveal-me">${ic}<span class="num">Step 0${i + 1}</span><h3>${h}</h3><p>${t}</p></div>`).join('')}</div>
+</div></section>`;
 // Home
 const hero = `<section class="dark"><div class="wrap"><div class="hero">
   <div class="hero-copy">
@@ -334,7 +347,7 @@ add('index.html', {
   title: 'Fudgio — Printed Cotton Bandanas in 8 Colours · Shipped Worldwide',
   desc: `Square printed bandanas in eight colours, 100% cotton, 55 cm. Buy any ${D.bundleQty}, save ${D.bundlePct}%. Cash on delivery across Pakistan and shipping worldwide.`,
   ld: [org, { '@type': 'WebSite', '@id': SITE + '/#website', url: SITE, name: BRAND, publisher: { '@id': SITE + '/#store' }, inLanguage: 'en' }],
-}, hero + marquee() + shopSection() + wear() + lookbook() + reviewsSection('', 'Worn and loved.') + band());
+}, hero + marquee() + shopSection() + wear() + lookbook() + howItWorks().replace('class="paper"', 'class="paper rule-top"') + reviewsSection('', 'Worn and loved.') + band());
 
 // Shop
 add('shop.html', {
@@ -342,7 +355,7 @@ add('shop.html', {
   title: 'Shop Bandanas — One Print in 8 Colours | Fudgio',
   desc: `All eight Fudgio bandanas: Classic Red, Jet Black, Navy, Forest Green, Mustard, Bone, Plum and Rust. 100% cotton, 55 cm square, from ${rs(ONE.price)} or $${ONE.usd}. Buy any ${D.bundleQty}, save ${D.bundlePct}%.`,
   ld: [{ '@type': 'ItemList', name: 'Fudgio bandanas', itemListElement: P.map((p, i) => ({ '@type': 'ListItem', position: i + 1, name: p.name + ' bandana', url: SITE + p.path })) }, crumbs([['Home', '/'], ['Shop', '/shop']])],
-}, pageHead('Shop / <span data-count>' + P.length + '</span> colours', 'Every colour,<br>one great print.', `100% cotton, 55 cm square, hemmed edges. <span data-from>From ${rs(ONE.price)}</span> — and any ${D.bundleQty} take ${D.bundlePct}% off.`, 'Shop')
+}, pageHead('<span data-count>' + P.length + '</span> colours', 'Every colour,<br>one great print.', `100% cotton, 55 cm square, hemmed edges. <span data-from>From ${rs(ONE.price)}</span> — and any ${D.bundleQty} take ${D.bundlePct}% off.`, 'Shop')
   + `<section class="paper"><div class="wrap sec"><div class="deal-meter" data-deal-meter hidden></div>${grid()}${perks()}</div></section>` + band() + wear());
 
 // Product pages
@@ -351,6 +364,10 @@ const productExtras = (slug) => reviewsSection(slug) + `<section class="paper ru
     <p>Any ${D.bundleQty} colours take <span data-pct>${D.bundlePct}</span>% off, worked out in your bag.</p></div>
   ${grid({ exclude: slug, limit: 4 })}
   <p style="margin-top:36px"><a class="link" href="/shop">See all <span data-count>${P.length}</span> colours</a></p>
+</div></section>
+<section class="paper rule-top" data-hide-empty hidden aria-labelledby="recentTitle"><div class="wrap sec-sm">
+  <div class="sec-head" style="margin-bottom:32px"><div class="stack"><p class="eyebrow">Recently viewed</p><h2 class="h3" id="recentTitle">Back to these?</h2></div></div>
+  <div class="grid" data-grid data-only-list="recent" data-exclude="${slug}" data-limit="4"></div>
 </div></section>` + wear() + band();
 for (const p of P) {
   add(`bandanas/${p.slug}.html`, {
@@ -485,6 +502,11 @@ add('bulk-orders.html', {
 </div>${contactForm('Bulk or custom', '<div class="row2"><div class="field"><label for="cQty">How many</label><input id="cQty" name="qty" inputmode="numeric" placeholder="e.g. 50"/></div><div class="field"><label for="cWhen">Needed by</label><input id="cWhen" name="when" placeholder="e.g. 20 December"/></div></div>')}</div></section>`, ['assets/forms.js']);
 
 // Utility pages
+add('saved.html', { url: '/saved', index: false, title: 'Your Favourites | Fudgio', desc: 'The Fudgio bandanas you saved.' },
+  pageHead('Favourites', 'Saved for<br>later.', 'Tap the heart on any colour to keep it here. Saved on this device.', 'Favourites')
+  + `<section class="paper"><div class="wrap sec">
+    <div class="empty" data-empty-for="saved"><h2>Nothing saved yet.</h2><p>Tap the heart on a colour you like and it will wait for you here.</p><a class="btn btn-primary" href="/shop">Browse the colours</a></div>
+    <div class="grid" data-grid data-only-list="saved"></div></div></section>` + band());
 add('track.html', { url: '/track', index: false, title: 'Track Your Order | Fudgio', desc: 'Track your Fudgio order with your order number and phone number.' },
   pageHead('Track', 'Where’s my bandana?', 'Enter the order number from checkout and the phone number you ordered with.', 'Track your order')
   + `<section class="paper"><div class="wrap sec" style="max-width:860px"><form class="form panel" id="trackForm" novalidate>
@@ -507,7 +529,7 @@ console.log('wrote', pages.length, 'pages');
 w('admin/art.js', r('assets/art.js'));
 w('admin/favicon.svg', r('assets/favicon.svg'));
 
-w('robots.txt', `# Fudgio — ${SITE}\nUser-agent: *\nAllow: /\n\nDisallow: /cart\nDisallow: /checkout\nDisallow: /track\nDisallow: /bandana\nDisallow: /api/\nDisallow: /admin/\n\nSitemap: ${SITE}/sitemap.xml\n`);
+w('robots.txt', `# Fudgio — ${SITE}\nUser-agent: *\nAllow: /\n\nDisallow: /cart\nDisallow: /checkout\nDisallow: /track\nDisallow: /saved\nDisallow: /bandana\nDisallow: /api/\nDisallow: /admin/\n\nSitemap: ${SITE}/sitemap.xml\n`);
 const today = new Date().toISOString().slice(0, 10);
 w('sitemap.xml', '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
   + pages.filter((p) => p.m.index).map((p) => `  <url>\n    <loc>${SITE}${p.m.url}</loc>\n    <lastmod>${today}</lastmod>\n    <priority>${p.m.priority || '0.5'}</priority>\n  </url>\n`).join('')
