@@ -1,4 +1,4 @@
-/* ===== Fudgio — Admin dashboard ===== */
+/* ===== Brownie Bliss — Admin dashboard ===== */
 :root {
   /* Same four brand colours as the storefront — white, black, orange, pink —
      arranged dark, which suits a dashboard you stare at all day. The status
@@ -159,7 +159,7 @@ select.status-select:focus { outline: none; border-color: var(--brand); }
 .btn-save { background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: var(--white); }
 .btn-danger { background: transparent; color: var(--pink); border: 1px solid var(--pink); }
 .btn-danger:hover { background: var(--pink); color: var(--white); }
-/* Read-only size chips on the stock card. */
+/* The three sizes a brownie is sold in, shown read-only on the stock card. */
 .inv-sizes { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
 .inv-sizes span {
   font-size: .74rem; font-weight: 700; color: var(--dim);
@@ -200,27 +200,3 @@ select.status-select:focus { outline: none; border-color: var(--brand); }
 .admin-modal .am-inner{position:relative;width:min(560px,100%);max-height:90vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px;box-shadow:0 30px 60px -20px rgba(0,0,0,.6)}
 .admin-modal .am-close{position:absolute;top:12px;right:16px;background:none;border:none;color:var(--dim);font-size:1.6rem;cursor:pointer}
 .admin-modal table td{padding:6px 0;border:none}
-
-/* bandana colours */
-.sw-dot{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
-.inv-top:has(.inv-art){display:grid;place-items:center}
-.inv-art{display:block;height:82%;aspect-ratio:1;box-shadow:0 18px 30px -16px rgba(0,0,0,.5)}
-.inv-art svg{display:block;width:100%}
-#pfPreview svg{display:block;width:100%}
-.msg{border:1px solid var(--line,#eee);border-radius:12px;padding:14px 16px;margin-bottom:10px}
-.msg.is-new{border-color:#ff6a13;box-shadow:0 0 0 3px rgba(255,106,19,.12)}
-.msg-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
-a.mini{text-decoration:none;display:inline-flex;align-items:center}
-/* photo gallery per colour */
-.inv-photos{display:flex;gap:8px;flex-wrap:wrap;padding:10px 16px 0}
-.ph-thumb{position:relative;width:56px;height:56px;border-radius:8px;overflow:hidden;border:2px solid transparent}
-.ph-thumb.main{border-color:#ff6a13}
-.ph-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.ph-tools{position:absolute;inset:auto 0 0 0;display:flex;justify-content:space-between;background:rgba(0,0,0,.6)}
-.ph-tools button,.ph-tools span{background:none;border:0;color:#fff;font-size:12px;padding:2px 6px;cursor:pointer;line-height:1.2}
-.ph-thumb.main .ph-tools span{color:#ffb27a}
-.ph-add{width:56px;height:56px;border-radius:8px;border:2px dashed rgba(255,255,255,.3);display:grid;place-items:center;font-size:22px;color:rgba(255,255,255,.7);cursor:pointer}
-.ph-add:hover{border-color:#ff6a13;color:#ff6a13}
-.media-slot{display:flex;flex-direction:column;gap:6px;width:170px}
-.media-slot img,.media-empty{width:170px;aspect-ratio:5/6;object-fit:cover;border-radius:85px 85px 8px 8px;display:block}
-.media-empty{display:grid;place-items:center;border:2px dashed rgba(255,255,255,.2);color:rgba(255,255,255,.5);font-size:.8rem;text-align:center;padding:10px}

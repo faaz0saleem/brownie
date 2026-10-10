@@ -1,6 +1,6 @@
 # 🚀 Fudgio — Deployment & Go-Live Guide
 
-This guide takes Fudgio from code to a real store selling bandanas at **fudgio.com**,
+This guide takes Fudgio from code to a real store selling brownies at **fudgio.com**,
 with the admin at **admin.fudgio.com**.
 
 > 🚨 **Before anything else — rotate these two passwords**
@@ -363,10 +363,8 @@ The app is **functionally complete**. These are the real-world steps before publ
 - [ ] **Point DNS** for `fudgio.com` and `admin.fudgio.com` at the server; enable **HTTPS**.
 - [ ] **Set real contact details** (`CONTACT_EMAIL`, `CONTACT_PHONE`, address, Instagram) in `.env`.
 - [ ] **Set real prices, stock and delivery settings** (`FREE_DELIVERY_OVER`, `DELIVERY_FEE`, currency).
-- [ ] **Add real bandana photos** in the admin (Products & Stock → Add image) — until then the shop draws each colour.
-- [ ] **Set the international payment link** (admin → Settings) so overseas customers can pay straight after ordering.
-- [ ] **Check delivery fees** in admin → Settings: values saved there override `.env` (a shop that saved Rs 150 / free over Rs 2,500 in the brownie days keeps those until changed).
-- [ ] **Confirm the facts on the site**: 100% cotton, 55 cm, delivery times, 7-day exchanges — edit `scripts/build.mjs` and run `node scripts/build.mjs` if any differ.
+- [ ] **Add real brownie photos** in the admin (Products & Stock → Add image).
+- [ ] **Define your delivery area** and update the FAQ/checkout copy accordingly.
 
 ### Should-do before marketing
 - [x] **Order notifications** — built in. Every new order emails you (set `SMTP_*` and `ORDER_NOTIFY_TO`)

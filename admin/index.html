@@ -7,7 +7,8 @@
   <title>Fudgio — Admin Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <!-- Fonts must not block rendering. -->
+  <!-- Fonts must not block rendering: the brownie list is drawn by JS that runs
+     after this tag, so a slow font CDN would leave customers on an empty menu. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
   <link rel="stylesheet" href="/admin.css" />
@@ -17,7 +18,7 @@
   <!-- LOGIN -->
   <div class="login-screen" id="loginScreen">
     <div class="login-card">
-      <div class="logo">🧣</div>
+      <div class="logo">🍫</div>
       <h1>Fudgio Admin</h1>
       <p>Sign in to manage orders, stock, images &amp; analytics</p>
       <div class="login-err" id="loginErr"></div>
@@ -31,7 +32,7 @@
   <div class="app" id="app">
     <aside class="sidebar">
       <div class="brand">
-        <span class="logo">🧣</span>
+        <span class="logo">🍫</span>
         <span>Fudgio<small>Admin Panel</small></span>
       </div>
       <nav class="nav-menu">
@@ -39,10 +40,6 @@
         <button class="nav-item" data-view="orders"><span class="ico">🧾</span> Orders</button>
         <button class="nav-item" data-view="inventory"><span class="ico">📦</span> Products &amp; Stock</button>
         <button class="nav-item" data-view="customers"><span class="ico">👥</span> Customers</button>
-        <button class="nav-item" data-view="messages"><span class="ico">✉️</span> Messages</button>
-        <button class="nav-item" data-view="coupons"><span class="ico">🏷</span> Discount codes</button>
-        <button class="nav-item" data-view="reviews"><span class="ico">⭐</span> Reviews</button>
-        <button class="nav-item" data-view="subscribers"><span class="ico">📬</span> Subscribers</button>
         <button class="nav-item" data-view="settings"><span class="ico">⚙️</span> Settings</button>
       </nav>
       <div class="sidebar-bottom">
@@ -66,7 +63,7 @@
         <div class="two-col">
           <div class="panel">
             <h3>📈 Sales — last 14 days</h3>
-            <div class="panel-sub">Revenue &amp; orders per day (rupees)</div>
+            <div class="panel-sub">Revenue &amp; orders per day (COD)</div>
             <div class="chart" id="salesChart"></div>
           </div>
           <div class="panel">
@@ -77,8 +74,8 @@
         </div>
         <div class="two-col">
           <div class="panel">
-            <h3>📍 Where orders go</h3>
-            <div class="panel-sub">Cities in Pakistan, countries abroad</div>
+            <h3>📍 Orders by city</h3>
+            <div class="panel-sub">Where your brownies are going</div>
             <div class="rank-list" id="cityBreakdown"></div>
           </div>
           <div class="panel">
@@ -108,8 +105,8 @@
       <!-- INVENTORY -->
       <section class="view" id="view-inventory">
         <div class="panel">
-          <h3>🧣 Colours, stock &amp; photos</h3>
-          <div class="panel-sub">Each colour of the bandana. Upload a photo to replace the drawing, set Rs and $ prices and stock, or add a new colour.</div>
+          <h3>📦 Products, stock &amp; images</h3>
+          <div class="panel-sub">Upload brownie photos, adjust price &amp; stock, mark items out of stock, and see units sold per product.</div>
           <div class="inv-grid" id="invGrid"></div>
         </div>
       </section>
@@ -129,14 +126,6 @@
           </div>
         </div>
       </section>
-      <!-- MESSAGES -->
-      <section class="view" id="view-messages"><div class="panel"><h3>✉️ Messages</h3><div class="panel-sub">From the contact and bulk-order forms. Each one is also emailed to you.</div><div id="messagesBody"></div></div></section>
-      <!-- COUPONS -->
-      <section class="view" id="view-coupons"><div class="panel"><h3>🏷 Discount codes</h3><div class="panel-sub">Codes customers type in their bag. They stack on top of the bundle deal and are checked on the server when the order is placed.</div><div id="couponsBody"></div></div></section>
-      <!-- REVIEWS -->
-      <section class="view" id="view-reviews"><div class="panel"><h3>⭐ Reviews</h3><div class="panel-sub">Only customers with a real order can review, from their tracking page. Approve a review to show it on the shop.</div><div id="reviewsBody"></div></div></section>
-      <!-- SUBSCRIBERS -->
-      <section class="view" id="view-subscribers"><div class="panel"><h3>📬 “Get new colours first”</h3><div class="panel-sub">Email these people when a new colour drops.</div><div id="subscribersBody"></div></div></section>
       <!-- SETTINGS -->
       <section class="view" id="view-settings">
         <div id="settingsBody"></div>
@@ -146,7 +135,6 @@
 
   <div class="toast" id="toast"></div>
   <script src="/recaptcha-config.js"></script>
-  <script src="/art.js"></script>
   <script src="/admin.js"></script>
 </body>
 </html>

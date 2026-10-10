@@ -1,11 +1,11 @@
 {
     "name": "Fudgio",
     "short_name": "Fudgio",
-    "description": "Printed cotton bandanas in eight colours. Cash on delivery across Pakistan, shipped worldwide.",
+    "description": "Handcrafted brownies baked fresh to order and delivered across Lahore.",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#ff6a13",
-    "theme_color": "#ff6a13",
+    "background_color": "#fffaf3",
+    "theme_color": "#fffaf3",
     "icons": [
         {
             "src": "/assets/favicon-192.png",

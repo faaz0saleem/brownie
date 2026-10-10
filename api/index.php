@@ -68,8 +68,6 @@ try {
       $r['orders'] = (int) db()->query("SELECT COUNT(*) c FROM orders")->fetch()['c'];
       $r['products'] = (int) db()->query("SELECT COUNT(*) c FROM products")->fetch()['c'];
       $r['visits'] = (int) db()->query("SELECT COUNT(*) c FROM visits")->fetch()['c'];
-      $r['schema'] = (int) meta_get(db(), 'schema');     // 3 = bandana catalogue in place
-      $r['bandanas'] = (int) db()->query("SELECT COUNT(*) c FROM products WHERE active=1 AND color IS NOT NULL AND color<>''")->fetch()['c'];
     } catch (Throwable $e) { $r['dbError'] = $e->getMessage(); }
     if (db_driver()==='sqlite') {
       $p = $GLOBALS['__fudgio_sqlite'] ?? '';
@@ -78,7 +76,7 @@ try {
     }
     out($r);
   }
-  if ($path==='config') out(['statuses'=>order_statuses(),'currency'=>cfg()['currency']]);
+  if ($path==='config') out(['statuses'=>['Pending','Confirmed','Baking','Out for Delivery','Delivered','Cancelled'],'currency'=>cfg()['currency']]);
 
   // Public: everything the storefront needs to render correct totals.
   // The delivery fee and free-delivery threshold live in the admin, and
@@ -93,102 +91,9 @@ try {
       'deliveryFee'      => (int)($s['deliveryFee'] ?? cfg()['deliveryFee']),
       'freeDeliveryOver' => (int)($s['freeDeliveryOver'] ?? cfg()['freeDeliveryOver']),
       'currency'         => cfg()['currency'],
-      // Tells the checkout whether to show the SMS verification step. It only
-      // ever applies to Pakistani numbers: SMS guards cash on delivery, and an
-      // international order is paid before it ships.
+      // Tells the checkout whether to show the SMS verification step.
       'smsVerification'  => sms_ready(),
-      // International shipping, all in USD.
-      'intlEnabled'      => (bool)($s['intlEnabled'] ?? true),
-      'intlShipping'     => (int)($s['intlShipping'] ?? 12),
-      'intlFreeOver'     => (int)($s['intlFreeOver'] ?? 0),
-      'usdRate'          => max(1, (int)($s['usdRate'] ?? 280)),
-      'intlPaymentLink'  => (string)($s['intlPaymentLink'] ?? ''),
-      // The buy-3 deal, delivery times and social links shown across the site.
-      'bundleQty'        => (int)($s['bundleQty'] ?? 3),
-      'bundlePct'        => (int)($s['bundlePct'] ?? 15),
-      'daysPk'           => (string)($s['daysPk'] ?? ''),
-      'daysIntl'         => (string)($s['daysIntl'] ?? ''),
-      'instagram'        => (string)($s['instagram'] ?? ''),
-      'whatsapp'         => (string)($s['whatsapp'] ?? ''),
-      // A real photo for the top of the home page, if the shop has one.
-      'bannerUrl'        => media_urls()['banner'] ?? '',
-      // Photos for the hero and the three "Made to be worn" looks.
-      'media'            => (object) media_urls(),
     ]);
-  }
-
-  // ---- discount codes ----
-  // POST /api/coupon {code, units} checks a code for the bag (public, slowed
-  // down so codes can't be guessed); /api/coupons is the admin's list.
-  if ($path==='coupon' && $method==='POST') {
-    throttle('coupon', 30, 3600000);
-    $b = body(4096);
-    $r = coupon_validate((string)($b['code'] ?? ''), max(0, (int)($b['units'] ?? 0)));
-    if (isset($r['error'])) err($r['error']);
-    $c = $r['coupon'];
-    out(['code'=>$c['code'],'kind'=>$c['kind'],'value'=>$c['value'],'valueUsd'=>$c['valueUsd'],'minUnits'=>$c['minUnits'],'label'=>coupon_label($c)]);
-  }
-  if ($seg[0]==='coupons') {
-    require_admin();
-    if (count($seg)===1 && $method==='GET') out(coupons_all());
-    if (count($seg)===1 && $method==='POST') { $r = coupon_save(body()); isset($r['error']) ? err($r['error']) : out($r['coupon']); }
-    if (count($seg)===2 && $method==='DELETE') out(['ok'=>coupon_delete(urldecode($seg[1]))]);
-    err('Not found', 404);
-  }
-
-  // ---- reviews ----
-  // GET /api/reviews[?slug=] is public (approved only). POST needs the order
-  // number and phone. The admin lists, approves, hides and deletes.
-  if ($seg[0]==='reviews') {
-    if (count($seg)===1 && $method==='GET') {
-      if (isset($_GET['all'])) { require_admin(); out(reviews_all()); }
-      out(reviews_public(clean_text($_GET['slug'] ?? '', 120)));
-    }
-    if (count($seg)===1 && $method==='POST') {
-      throttle('review', 12, 3600000);
-      $r = review_create(body(8192));
-      isset($r['error']) ? err($r['error']) : out(['ok'=>true], 201);
-    }
-    if (count($seg)===2) {
-      require_admin();
-      if ($method==='PATCH') out(['ok'=>review_set_status($seg[1], (string)(body()['status'] ?? ''))]);
-      if ($method==='DELETE') out(['ok'=>review_delete($seg[1])]);
-    }
-    err('Not found', 404);
-  }
-
-  // Public: "get new colours first".
-  if ($path==='subscribe' && $method==='POST') {
-    throttle('subscribe', 20, 3600000);
-    $b = body(4096);
-    if (!empty($b['website'])) out(['ok'=>true]);       // honeypot: a bot filled the hidden field
-    $r = subscriber_add((string)($b['email'] ?? ''), (string)($b['source'] ?? 'site'));
-    if (isset($r['error'])) err($r['error']);
-    // Hand over the welcome code, if the shop has set one that still works.
-    $wc = (string)(settings_get()['welcomeCode'] ?? '');
-    $ok = $wc !== '' && !isset(coupon_validate($wc, 99)['error']) ? coupon_get($wc) : null;
-    out(['ok'=>true, 'code'=>$ok ? $ok['code'] : '', 'codeLabel'=>$ok ? coupon_label($ok) : '']);
-  }
-
-  // Public: the contact form. Stored for the admin inbox, then emailed to
-  // the shop after the response so the sender is not kept waiting on SMTP.
-  if ($path==='contact' && $method==='POST') {
-    throttle('contact', 6, 3600000);
-    $b = body(16384);
-    if (!empty($b['website'])) out(['ok'=>true]);       // honeypot
-    $r = message_create($b);
-    if (isset($r['error'])) err($r['error']);
-    $payload = json_encode(['ok'=>true]);
-    http_response_code(201);
-    ignore_user_abort(true);
-    header('Content-Length: ' . strlen($payload));
-    header('Connection: close');
-    echo $payload;
-    if (function_exists('fastcgi_finish_request'))      fastcgi_finish_request();
-    elseif (function_exists('litespeed_finish_request')) litespeed_finish_request();
-    else { while (ob_get_level() > 0) @ob_end_flush(); @flush(); }
-    notify_message($r['message']);
-    exit;
   }
 
   // Public: record a page visit (fire-and-forget from the storefront).
@@ -313,42 +218,6 @@ try {
     err('Not found',404);
   }
 
-  // ---- site photos: /api/media/<banner|look1|look2|look3> ----
-  // (/api/banner is the same as /api/media/banner, kept for older pages.)
-  if ($path==='banner' || ($seg[0]==='media' && count($seg)===2)) {
-    $slot = $path==='banner' ? 'banner' : $seg[1];
-    if (!in_array($slot, media_slots(), true)) err('Not found', 404);
-    if ($method==='GET') {
-      $img = media_bytes($slot);
-      if (!$img) { http_response_code(404); header('Content-Type: text/plain'); echo 'Not found'; exit; }
-      header('Content-Type: ' . $img['type']);
-      header('Cache-Control: public, max-age=31536000, immutable');
-      header('Content-Length: ' . strlen($img['bytes']));
-      echo $img['bytes']; exit;
-    }
-    require_admin();
-    if ($method==='PUT') {
-      $img = body(8000000)['imageUrl'] ?? '';
-      if (!is_string($img) || !preg_match('#^data:image/(png|jpe?g|webp);base64,[A-Za-z0-9+/=\s]+$#', $img)) err('Please upload a JPG, PNG or WebP photo.');
-      if (strlen($img) > 6000000) err('Image too large.');
-      media_set($slot, $img); out(['ok'=>true, 'url'=>media_urls()[$slot] ?? '']);
-    }
-    if ($method==='DELETE') { media_set($slot, null); out(['ok'=>true]); }
-  }
-
-  // ---- product photos, as real image files ----
-  // /api/img/<product id>/<n>?v=<hash>. The hash in the URL changes with the
-  // photo, so this can be cached for a year. Hidden products' photos are
-  // still served: past orders and the admin show them.
-  if ($seg[0]==='img' && count($seg)===3 && $method==='GET') {
-    $img = product_photo_bytes(rawurldecode($seg[1]), (int)$seg[2]);
-    if (!$img) { http_response_code(404); header('Content-Type: text/plain'); echo 'Not found'; exit; }
-    header('Content-Type: ' . $img['type']);
-    header('Cache-Control: public, max-age=31536000, immutable');
-    header('Content-Length: ' . strlen($img['bytes']));
-    echo $img['bytes']; exit;
-  }
-
   // ---- products ----
   if ($seg[0]==='products') {
     if (count($seg)===1 && $method==='GET') { $admin=hash_equals(cfg()['adminToken'], (string)($_SERVER['HTTP_X_ADMIN_TOKEN']??'')); out(products_all($admin)); }
@@ -357,34 +226,16 @@ try {
     if (count($seg)===2 && $method==='GET') { $p=product_get($pid); $p?out($p):err('Not found',404); }
     if (count($seg)===2 && $method==='PATCH') { require_admin(); $p=product_update($pid, body()); $p?out($p):err('Not found',404); }
     if (count($seg)===2 && $method==='DELETE') { require_admin(); product_delete($pid)?out(['ok'=>true]):err('Not found',404); }
-    // Photos. PUT …/image makes an upload the main photo; POST …/photos adds
-    // one; DELETE …/photos/<n> removes one; POST …/photos/<n>/main promotes
-    // it; DELETE …/image removes them all.
-    $readImage = function () {
-      $img = body(8000000)['imageUrl'] ?? '';
-      if (!is_string($img) || $img === '') err('No image.');
-      if (strlen($img) > 6000000) err('Image too large.');
-      if (!preg_match('#^data:image/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$#', $img)) err('Unsupported image format.');
-      return $img;
-    };
     if (($seg[2]??'')==='image') {
       require_admin();
       if ($method==='PUT'){
-        $r = product_photo_edit($pid, 'add', null, $readImage());
-        if (is_string($r)) err($r);
-        $r = product_photo_edit($pid, 'main', count($r['photos']) - 1);
-        is_string($r) ? err($r) : out($r);
+        $img=body(8000000)['imageUrl']??'';
+        if(!is_string($img)||$img==='') err('No image.');
+        if(strlen($img)>6000000) err('Image too large.');
+        if(!preg_match('#^data:image/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$#', $img)) err('Unsupported image format.');
+        out(product_update($pid,['imageUrl'=>$img]));
       }
-      if ($method==='DELETE'){ $r = product_photos_set($pid, []); $r ? out($r) : err('Not found', 404); }
-    }
-    if (($seg[2]??'')==='photos') {
-      require_admin();
-      $n = isset($seg[3]) ? (int)$seg[3] : null;
-      if ($method==='POST' && $n === null) $r = product_photo_edit($pid, 'add', null, $readImage());
-      elseif ($method==='POST' && ($seg[4]??'')==='main') $r = product_photo_edit($pid, 'main', $n);
-      elseif ($method==='DELETE' && $n !== null) $r = product_photo_edit($pid, 'remove', $n);
-      else err('Not found', 404);
-      is_string($r) ? err($r) : out($r);
+      if ($method==='DELETE'){ out(product_update($pid,['imageUrl'=>null])); }
     }
     err('Not found',404);
   }
@@ -403,22 +254,18 @@ try {
       // code, which is the stronger check and also gives a reachable number for
       // a COD delivery. Without one, fall back to the image CAPTCHA so the shop
       // still takes orders rather than refusing everyone.
-      // SMS only applies inside Pakistan. It exists because cash on delivery
-      // lets someone order without paying; an international order is paid
-      // before it ships, so the CAPTCHA alone is enough there.
-      $domestic = is_domestic((string)($cust['country'] ?? 'PK') ?: 'PK');
-      if ($domestic && sms_ready()) {
+      if (sms_ready()) {
         if (!phone_is_verified((string)($cust['phone'] ?? '')))
           err('Please verify your phone number before placing the order.');
       } else {
         $cap = captcha_check((string)($b['captchaId'] ?? ''), (string)($b['captchaAnswer'] ?? ''));
         if (isset($cap['error'])) err($cap['error']);
       }
-      $r=order_create($b['items']??[], $cust, $u['id']??null, (string)($b['coupon'] ?? ''));
+      $r=order_create($b['items']??[], $cust, $u['id']??null);
       if (isset($r['error'])) err($r['error']);
       // Single-use: the same confirmed number cannot be replayed for a second
       // order without asking for a new code.
-      if ($domestic && sms_ready()) phone_otp_consume((string)($cust['phone'] ?? ''));
+      if (sms_ready()) phone_otp_consume((string)($cust['phone'] ?? ''));
 
       // Answer the customer first, then send the owner's alert email, so the
       // shopper is never left watching a spinner while we talk to an SMTP
@@ -437,7 +284,6 @@ try {
       else { while (ob_get_level() > 0) @ob_end_flush(); @flush(); }
 
       notify_order($r['order']);
-      notify_customer($r['order']);
       exit;
     }
     require_admin();
@@ -495,15 +341,6 @@ try {
   if ($path==='analytics'){ require_admin(); out(analytics()); }
   if ($path==='users'){ require_admin(); out(users_all()); }
   if ($path==='settings'){ require_admin(); if($method==='GET') out(settings_get()); out(settings_set(body())); }
-  if ($path==='subscribers'){ require_admin(); out(subscribers_all()); }
-  if ($seg[0]==='subscribers' && count($seg)===2 && $method==='DELETE'){ require_admin(); out(['ok'=>subscriber_delete(urldecode($seg[1]))]); }
-  if ($path==='export/subscribers'){ require_admin(); header('Content-Type: text/csv'); header('Content-Disposition: attachment; filename="fudgio-subscribers.csv"'); echo subscribers_csv(); exit; }
-  if ($path==='messages'){ require_admin(); out(messages_all()); }
-  if ($seg[0]==='messages' && count($seg)===2){
-    require_admin();
-    if ($method==='PATCH') out(['ok'=>message_set_status($seg[1], (string)(body()['status'] ?? ''))]);
-    if ($method==='DELETE') out(['ok'=>message_delete($seg[1])]);
-  }
   if ($path==='export/orders'){ require_admin(); header('Content-Type: text/csv'); header('Content-Disposition: attachment; filename="fudgio-orders.csv"'); echo orders_csv(); exit; }
   if ($seg[0]==='users' && ($seg[2]??'')==='orders'){ require_admin(); out(orders_all($seg[1])); }
   if ($path==='login' && $method==='POST'){

@@ -36,18 +36,12 @@ function smtp_cmd($fp, string $cmd, string $expect = ''): string {
   return smtp_line($fp, $expect);
 }
 
-/** A Reply-To address, only if it is a plain valid email (no header injection). */
-function reply_to_ok(string $addr): string {
-  $addr = trim($addr);
-  return ($addr !== '' && !preg_match('/[\r\n<>,;]/', $addr) && filter_var($addr, FILTER_VALIDATE_EMAIL)) ? $addr : '';
-}
-
 /** Deliver with PHP's mail(). Works on most shared hosts for a domain they host. */
-function php_mail_send(string $to, string $subject, string $text, string $html = '', string $replyTo = ''): array {
+function php_mail_send(string $to, string $subject, string $text, string $html = ''): array {
   $c = smtp_config();
   $from = $c['from'] ?: 'noreply@fudgio.com';
   $headers = 'From: ' . $c['name'] . ' <' . $from . ">\r\n"
-           . 'Reply-To: ' . (reply_to_ok($replyTo) ?: $from) . "\r\n"
+           . 'Reply-To: ' . $from . "\r\n"
            . "MIME-Version: 1.0\r\n"
            . 'Content-Type: text/' . ($html !== '' ? 'html' : 'plain') . '; charset=UTF-8';
   $ok = @mail($to, $subject, $html !== '' ? $html : $text, $headers, '-f' . $from);
@@ -62,8 +56,8 @@ function php_mail_send(string $to, string $subject, string $text, string $html =
  * fairly often and present certificates that don't match, so a single attempt
  * is not enough to rely on for something as important as a checkout code.
  */
-function send_mail(string $to, string $subject, string $text, string $html = '', string $replyTo = ''): array {
-  if (!smtp_ready()) return php_mail_send($to, $subject, $text, $html, $replyTo);
+function send_mail(string $to, string $subject, string $text, string $html = ''): array {
+  if (!smtp_ready()) return php_mail_send($to, $subject, $text, $html);
 
   $c = smtp_config();
   $secure = strtolower($c['secure']);
@@ -74,19 +68,19 @@ function send_mail(string $to, string $subject, string $text, string $html = '',
 
   $errors = [];
   foreach ($attempts as [$port, $enc]) {
-    [$ok, $err] = smtp_send($to, $subject, $text, $html, (int) $port, $enc, $replyTo);
+    [$ok, $err] = smtp_send($to, $subject, $text, $html, (int) $port, $enc);
     if ($ok) return [true, ''];
     $errors[] = "port $port/" . ($enc ?: 'plain') . ': ' . $err;
   }
 
   // Last resort so a customer is never stuck without their code.
-  [$ok, $err] = php_mail_send($to, $subject, $text, $html, $replyTo);
+  [$ok, $err] = php_mail_send($to, $subject, $text, $html);
   if ($ok) { error_log('Fudgio: SMTP failed, delivered via mail(). ' . implode(' | ', $errors)); return [true, '']; }
   return [false, implode(' | ', $errors) . ' | mail(): ' . $err];
 }
 
 /** One SMTP delivery attempt against a specific port/encryption. */
-function smtp_send(string $to, string $subject, string $text, string $html, int $port, string $secure, string $replyTo = ''): array {
+function smtp_send(string $to, string $subject, string $text, string $html, int $port, string $secure): array {
   $c = smtp_config();
   $host = ($secure === 'ssl' || $port === 465) ? 'ssl://' . $c['host'] : $c['host'];
 
@@ -132,7 +126,6 @@ function smtp_send(string $to, string $subject, string $text, string $html, int 
     $boundary = 'fud' . bin2hex(random_bytes(8));
     $headers  = 'From: ' . mb_encode_mimeheader($c['name']) . ' <' . $c['from'] . ">\r\n";
     $headers .= 'To: <' . $to . ">\r\n";
-    if (reply_to_ok($replyTo) !== '') $headers .= 'Reply-To: <' . reply_to_ok($replyTo) . ">\r\n";
     $headers .= 'Subject: ' . mb_encode_mimeheader($subject) . "\r\n";
     $headers .= 'Date: ' . date('r') . "\r\n";
     $headers .= 'Message-ID: <' . bin2hex(random_bytes(10)) . '@fudgio.com>' . "\r\n";

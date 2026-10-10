@@ -145,7 +145,7 @@ file_put_contents("$root/favicon.ico", $ico . $dir . $body);
 file_put_contents("$root/site.webmanifest", json_encode([
   'name'             => 'Fudgio',
   'short_name'       => 'Fudgio',
-  'description'      => 'Printed cotton bandanas in eight colours. Cash on delivery across Pakistan, shipped worldwide.',
+  'description'      => 'Handcrafted brownies baked fresh to order and delivered across Lahore.',
   'start_url'        => '/',
   'display'          => 'standalone',
   'background_color' => sprintf('#%02x%02x%02x', $bg['red'], $bg['green'], $bg['blue']),
