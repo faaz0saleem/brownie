@@ -1,5 +1,11 @@
 # 🍫 Fudgio
 
+## Free admin order alerts
+
+Open the admin dashboard, sign in, and select **Enable order alerts**. Allow browser notifications if prompted, then use **Test sound** to check your volume. New orders are checked every 20 seconds and automatically appear in the orders table, with a persistent notice, a tab-title badge, a chime and a browser notification where supported. Old orders on the initial load do not trigger alerts. Logout stops the checks.
+
+**Keep the admin tab open and signed in.** Background tabs and phone browsers may pause checks; these are not SMS or closed-browser push alerts. After reopening the page, tap **Test sound** to unlock audio again. No paid service, phone number, API key or SMS subscription is needed. Notification previews do not include customer contact details. Run `npm run test:alerts` for the alert tests.
+
 A professional, SEO-ready **brownie e-commerce store** with a fully separate **admin dashboard**.
 Cash on Delivery only. User accounts with auto-login, order tracking, and a MySQL
 (Google Cloud SQL) database — with a zero-config local fallback so it runs anywhere.

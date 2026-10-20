@@ -4,6 +4,7 @@
   "description": "Fudgio — handcrafted brownies, cash on delivery. Storefront + admin dashboard.",
   "type": "module",
   "scripts": {
+    "test:alerts": "node --test tests/admin-order-alerts.test.cjs",
     "start": "node src/start.js",
     "shop": "node src/server-shop.js",
     "admin": "node src/server-admin.js",

@@ -9,6 +9,12 @@ let TOKEN = localStorage.getItem('fud_admin_token') || '';
 let STATUSES = ['Pending', 'Confirmed', 'Baking', 'Out for Delivery', 'Delivered', 'Cancelled'];
 const ADMIN_RECAPTCHA = (window.FUDGIO_ADMIN && window.FUDGIO_ADMIN.recaptcha) || { enabled: false, siteKey: '' };
 let recaptchaScriptPromise = null;
+const ORDER_ALERTS = new window.FudgioOrderAlerts({
+  refresh: () => loadOrders(),
+  money: (total) => RS(total),
+  toast: (message) => toast(message),
+  openOrders: () => document.querySelector('.nav-item[data-view="orders"]').click()
+});
 
 function loadRecaptchaScript() {
   if (!ADMIN_RECAPTCHA.enabled) return Promise.resolve();
@@ -78,6 +84,7 @@ async function login() {
   } catch (e) { err.textContent = e.message || 'Network error.'; }
 }
 function logout() {
+  ORDER_ALERTS.stop();
   localStorage.removeItem('fud_admin_token'); TOKEN = '';
   document.getElementById('app').classList.remove('show');
   document.getElementById('loginScreen').style.display = 'grid';
@@ -86,8 +93,11 @@ async function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').classList.add('show');
   try { const cfg = await (await api('/config')).json(); STATUSES = cfg.statuses; CUR = cfg.currency; } catch {}
+  if (!TOKEN) return;
   ensureQuickBar();
-  refreshAll();
+  ORDER_ALERTS.start();
+  refreshAll().catch(() => { if (TOKEN) toast('Could not refresh the admin. Order checks will retry.'); });
+  if (location.hash === '#orders') ORDER_ALERTS.openOrders();
 }
 
 // ---------- Nav ----------
@@ -108,6 +118,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
     document.getElementById('viewTitle').textContent = VIEW_META[view][0];
     document.getElementById('viewSub').textContent = VIEW_META[view][1];
     if (view === 'settings') loadSettings();
+    if (view === 'orders') ORDER_ALERTS.acknowledge();
   });
 });
 
@@ -193,10 +204,14 @@ const fmtDate = (ts) => new Date(ts).toLocaleString('en-US', { month: 'short', d
 let ORDERS = [];
 async function loadOrders() {
   const res = await api('/orders');
-  if (!res.ok) { toast('Could not load orders'); return; } // never wipe the table on error
-  ORDERS = await res.json();
+  if (!res.ok) throw new Error('Could not load orders'); // never wipe the table on error
+  const orders = await res.json();
+  if (!Array.isArray(orders)) throw new Error('Invalid order response');
+  if (!TOKEN) return;
+  ORDERS = orders;
   ensureOrderToolbar();
   renderOrders();
+  if (ORDER_ALERTS.observe(ORDERS).length) void loadDashboard().catch(() => {});
 }
 function ensureOrderToolbar() {
   if (document.getElementById('orderToolbar')) return;

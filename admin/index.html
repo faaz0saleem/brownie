@@ -11,7 +11,7 @@
      after this tag, so a slow font CDN would leave customers on an empty menu. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap"/></noscript>
-  <link rel="stylesheet" href="/admin.css" />
+  <link rel="stylesheet" href="/admin.css?v=order-alerts-1" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 </head>
 <body>
@@ -54,6 +54,21 @@
           <div class="sub" id="viewSub">Store overview &amp; analytics</div>
         </div>
         <button class="refresh-btn" onclick="refreshAll()">↻ Refresh</button>
+      </div>
+
+      <div class="order-alert-controls" aria-label="Order notification settings">
+        <div class="order-alert-actions">
+          <button class="refresh-btn" id="enableOrderAlerts" type="button" aria-pressed="false">🔔 Enable order alerts</button>
+          <button class="refresh-btn" id="testOrderSound" type="button">Test sound</button>
+        </div>
+        <p id="orderAlertStatus" role="status">Free alerts while this admin tab is open.</p>
+      </div>
+      <div class="new-order-alert" id="newOrderAlert" role="status" aria-live="polite" hidden>
+        <strong id="newOrderMessage"></strong>
+        <div class="order-alert-actions">
+          <button class="refresh-btn" id="viewNewOrders" type="button">View orders</button>
+          <button class="refresh-btn" id="dismissOrderAlert" type="button">Dismiss</button>
+        </div>
       </div>
 
       <!-- DASHBOARD -->
@@ -135,6 +150,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="/recaptcha-config.js"></script>
-  <script src="/admin.js"></script>
+  <script src="/order-alerts.js?v=1"></script>
+  <script src="/admin.js?v=order-alerts-1"></script>
 </body>
 </html>
